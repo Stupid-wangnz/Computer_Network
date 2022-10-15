@@ -1,4 +1,4 @@
-F:/CL_WorkSpace/Computer_network/Lab1/cmake-build-debug/CMakeFiles/client.dir
-F:/CL_WorkSpace/Computer_network/Lab1/cmake-build-debug/CMakeFiles/server.dir
-F:/CL_WorkSpace/Computer_network/Lab1/cmake-build-debug/CMakeFiles/edit_cache.dir
-F:/CL_WorkSpace/Computer_network/Lab1/cmake-build-debug/CMakeFiles/rebuild_cache.dir
+F:/CL_WorkSpace/Computer_network/Computer_Network/Lab1/cmake-build-debug/CMakeFiles/client.dir
+F:/CL_WorkSpace/Computer_network/Computer_Network/Lab1/cmake-build-debug/CMakeFiles/server.dir
+F:/CL_WorkSpace/Computer_network/Computer_Network/Lab1/cmake-build-debug/CMakeFiles/edit_cache.dir
+F:/CL_WorkSpace/Computer_network/Computer_Network/Lab1/cmake-build-debug/CMakeFiles/rebuild_cache.dir

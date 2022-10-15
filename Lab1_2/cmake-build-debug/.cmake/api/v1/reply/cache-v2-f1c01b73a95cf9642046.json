@@ -55,7 +55,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : "f:/CL_WorkSpace/Computer_network/Lab1/cmake-build-debug"
+			"value" : "f:/CL_WorkSpace/Computer_network/Computer_Network/Lab1_2/cmake-build-debug"
 		},
 		{
 			"name" : "CMAKE_CACHE_MAJOR_VERSION",
@@ -623,7 +623,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : "F:/CL_WorkSpace/Computer_network/Lab1"
+			"value" : "F:/CL_WorkSpace/Computer_network/Computer_Network/Lab1_2"
 		},
 		{
 			"name" : "CMAKE_INSTALL_PREFIX",
@@ -635,7 +635,7 @@
 				}
 			],
 			"type" : "PATH",
-			"value" : "C:/Program Files (x86)/Lab1"
+			"value" : "C:/Program Files (x86)/Lab1_2"
 		},
 		{
 			"name" : "CMAKE_LINKER",
@@ -851,7 +851,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "Lab1"
+			"value" : "Lab1_2"
 		},
 		{
 			"name" : "CMAKE_RANLIB",
@@ -1230,7 +1230,7 @@
 			"value" : "FALSE"
 		},
 		{
-			"name" : "Lab1_BINARY_DIR",
+			"name" : "Lab1_2_BINARY_DIR",
 			"properties" : 
 			[
 				{
@@ -1239,10 +1239,10 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "F:/CL_WorkSpace/Computer_network/Lab1/cmake-build-debug"
+			"value" : "F:/CL_WorkSpace/Computer_network/Computer_Network/Lab1_2/cmake-build-debug"
 		},
 		{
-			"name" : "Lab1_IS_TOP_LEVEL",
+			"name" : "Lab1_2_IS_TOP_LEVEL",
 			"properties" : 
 			[
 				{
@@ -1254,7 +1254,7 @@
 			"value" : "ON"
 		},
 		{
-			"name" : "Lab1_SOURCE_DIR",
+			"name" : "Lab1_2_SOURCE_DIR",
 			"properties" : 
 			[
 				{
@@ -1263,7 +1263,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "F:/CL_WorkSpace/Computer_network/Lab1"
+			"value" : "F:/CL_WorkSpace/Computer_network/Computer_Network/Lab1_2"
 		}
 	],
 	"kind" : "cache",

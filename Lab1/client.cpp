@@ -9,8 +9,8 @@
 
 #define PORT 7878
 #define BUF_SIZE 512
-#define ADDRSRV "127.0.0.1"
 using namespace std;
+string ADDRSRV;
 
 DWORD WINAPI handlerSend(LPVOID lparam) {
     SOCKET *socket = (SOCKET *) lparam;
@@ -19,6 +19,7 @@ DWORD WINAPI handlerSend(LPVOID lparam) {
     while (1) {
         cin >> buf;
         int len = send(*socket, buf, strlen(buf), 0);
+        //如果输入quit，直接退出聊天室
         if (strcmp(buf, "quit") == 0) {
             SYSTEMTIME sysTime;
             GetLocalTime(&sysTime);
@@ -42,8 +43,10 @@ DWORD WINAPI handlerRecv(LPVOID lparam) {
     SOCKET *socket = (SOCKET *) lparam;
     char buf[BUF_SIZE];
     memset(buf, 0, BUF_SIZE);
+    string fromUserName(100,'\0');
     while (1) {
         int len = recv(*socket, buf, BUF_SIZE, 0);
+
         if (strcmp(buf, "quit") == 0) {
             SYSTEMTIME sysTime;
             GetLocalTime(&sysTime);
@@ -73,10 +76,13 @@ int main() {
     }
     SOCKET sockClient = socket(AF_INET, SOCK_STREAM, 0);
 
+    cout<<"请输入聊天服务器的地址"<<endl;
+    cin>>ADDRSRV;
+
     SOCKADDR_IN addrSrv;
     addrSrv.sin_family = AF_INET;
     addrSrv.sin_port = htons(PORT);
-    addrSrv.sin_addr.S_un.S_addr = inet_addr(ADDRSRV);
+    addrSrv.sin_addr.S_un.S_addr = inet_addr(ADDRSRV.c_str());
 
     if (connect(sockClient, (SOCKADDR *) &addrSrv, sizeof(SOCKADDR)) != 0) {
         //TCP连接失败
@@ -84,6 +90,7 @@ int main() {
         return -1;
     }
     cout << "连接成功" << endl;
+
     HANDLE hthread[2];
     hthread[0] = CreateThread(NULL, 0, handlerRecv, (LPVOID) &sockClient, 0, NULL);
     hthread[1] = CreateThread(NULL, 0, handlerSend, (LPVOID) &sockClient, 0, NULL);
