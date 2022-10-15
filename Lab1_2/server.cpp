@@ -4,70 +4,47 @@
 #include <iostream>
 #include <thread>
 
-#pragma comment(lib, "ws2_32.lib")  //åŠ è½½ ws2_32.dll
+#pragma comment(lib, "ws2_32.lib")  //¼ÓÔØ ws2_32.dll
 
 #define PORT 7878
 #define BUF_SIZE 512
 #define ADDRSRV "127.0.0.1"
+int CLIENTNUM=2;
 using namespace std;
 
-DWORD WINAPI handlerSend(LPVOID lparam) {
+DWORD WINAPI handlerTransfer(LPVOID lparam) {
     SOCKET *socket = (SOCKET *) lparam;
     char buf[BUF_SIZE];
     memset(buf, 0, BUF_SIZE);
     while (1) {
-        cin >> buf;
-        int len = send(*socket, buf, strlen(buf), 0);
-        if (strcmp(buf, "quit") == 0) {
-            SYSTEMTIME sysTime;
-            GetLocalTime(&sysTime);
-            printf("%4d/%02d/%02d %02d:%02d:%02d.%03d æ˜ŸæœŸ%1d\n", sysTime.wYear, sysTime.wMonth, sysTime.wDay,
-                   sysTime.wHour, sysTime.wMinute, sysTime.wSecond, sysTime.wMilliseconds, sysTime.wDayOfWeek);
-            cout << "æ‚¨å·²é€€å‡ºèŠå¤©å®¤" << endl;
-            return 0;
+        for (int i = 0; i < CLIENTNUM; i++) {
+            int len = recv(socket[i], buf, BUF_SIZE, 0);
+            if (strcmp(buf, "quit") == 0) {
+                SYSTEMTIME sysTime;
+                GetLocalTime(&sysTime);
+                printf("%4d/%02d/%02d %02d:%02d:%02d.%03d ÐÇÆÚ%1d\n", sysTime.wYear, sysTime.wMonth, sysTime.wDay,
+                       sysTime.wHour, sysTime.wMinute, sysTime.wSecond, sysTime.wMilliseconds, sysTime.wDayOfWeek);
+                printf("ÓÃ»§%dÒÑ¾­ÍË³öÁÄÌìÊÒ",i);
+                send(socket[(i+1)%2],buf, strlen(buf),0);
+            }
+            if (len > 0) {
+                SYSTEMTIME sysTime;
+                GetLocalTime(&sysTime);
+                printf("%4d/%02d/%02d %02d:%02d:%02d.%03d ÐÇÆÚ%1d\n", sysTime.wYear, sysTime.wMonth, sysTime.wDay,
+                       sysTime.wHour, sysTime.wMinute, sysTime.wSecond, sysTime.wMilliseconds, sysTime.wDayOfWeek);
+                printf("ÓÃ»§%d:%s\n", i,buf);
+                send(socket[(i+1)%2],buf, strlen(buf),0);
+            }
+            memset(buf, 0, BUF_SIZE);
         }
-        if (len > 0) {
-            SYSTEMTIME sysTime;
-            GetLocalTime(&sysTime);
-            printf("%4d/%02d/%02d %02d:%02d:%02d.%03d æ˜ŸæœŸ%1d\n", sysTime.wYear, sysTime.wMonth, sysTime.wDay,
-                   sysTime.wHour, sysTime.wMinute, sysTime.wSecond, sysTime.wMilliseconds, sysTime.wDayOfWeek);
-            cout << "--------------å‘é€æ¶ˆæ¯æˆåŠŸ--------------" << endl;
-        }
-        memset(buf, 0, BUF_SIZE);
-    }
-}
-
-DWORD WINAPI handlerRecv(LPVOID lparam) {
-    SOCKET *socket = (SOCKET *) lparam;
-    char buf[BUF_SIZE];
-    memset(buf, 0, BUF_SIZE);
-    while (1) {
-        int len = recv(*socket, buf, BUF_SIZE, 0);
-        if (strcmp(buf, "quit") == 0) {
-            SYSTEMTIME sysTime;
-            GetLocalTime(&sysTime);
-            printf("%4d/%02d/%02d %02d:%02d:%02d.%03d æ˜ŸæœŸ%1d\n", sysTime.wYear, sysTime.wMonth, sysTime.wDay,
-                   sysTime.wHour, sysTime.wMinute, sysTime.wSecond, sysTime.wMilliseconds, sysTime.wDayOfWeek);
-            cout << "å¯¹æ–¹å·²é€€å‡ºèŠå¤©å®¤" << endl;
-            cout << "æœ¬æ¬¡èŠå¤©ç»“æŸï¼Œè¾“å…¥quité€€å‡º" << endl;
-            return 0;
-        }
-        if (len > 0) {
-            SYSTEMTIME sysTime;
-            GetLocalTime(&sysTime);
-            printf("%4d/%02d/%02d %02d:%02d:%02d.%03d æ˜ŸæœŸ%1d\n", sysTime.wYear, sysTime.wMonth, sysTime.wDay,
-                   sysTime.wHour, sysTime.wMinute, sysTime.wSecond, sysTime.wMilliseconds, sysTime.wDayOfWeek);
-            printf("å¯¹æ–¹ç”¨æˆ·:%s\n", buf);
-        }
-        memset(buf, 0, BUF_SIZE);
     }
 }
 
 int main() {
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-        //åŠ è½½å¤±è´¥
-        cout << "åŠ è½½DLLå¤±è´¥" << endl;
+        //¼ÓÔØÊ§°Ü
+        cout << "¼ÓÔØDLLÊ§°Ü" << endl;
         return -1;
     }
     SOCKET sockServer = socket(AF_INET, SOCK_STREAM, 0);
@@ -79,31 +56,43 @@ int main() {
     bind(sockServer, (SOCKADDR *) &addrSrv, sizeof(SOCKADDR));
 
     if (listen(sockServer, 10) == 0) {
-        cout << "æœåŠ¡å™¨è¿›å…¥ç›‘å¬çŠ¶æ€" << endl;
+        cout << "·þÎñÆ÷½øÈë¼àÌý×´Ì¬" << endl;
     } else {
-        cout << "ç›‘å¬å¤±è´¥" << endl;
+        cout << "¼àÌýÊ§°Ü" << endl;
         return -1;
     }
 
-    SOCKADDR_IN addrClient;
+    SOCKET sockConnects[2];
+
+    SOCKADDR_IN addrClient1;
     int lenAddr = sizeof(SOCKADDR);
-    SOCKET sockConnect = accept(sockServer, (SOCKADDR *) &addrClient, &(lenAddr));
-    if (sockConnect == SOCKET_ERROR) {
-        cout << "è¿žæŽ¥å¤±è´¥" << endl;
+    sockConnects[0] = accept(sockServer, (SOCKADDR *) &addrClient1, &(lenAddr));
+    if (sockConnects[0]== SOCKET_ERROR) {
+        cout << "Á¬½ÓÊ§°Ü" << endl;
+        getchar();
         return -1;
     }
-    cout << "è¿žæŽ¥æˆåŠŸ,å¯¹æ–¹çš„IPæ˜¯:" << inet_ntoa(addrClient.sin_addr) << endl;
+    cout << "¿Í»§¶Ë1Á¬½Ó³É¹¦,ËüµÄIPÊÇ:" << inet_ntoa(addrClient1.sin_addr) << endl;
 
-    HANDLE hthread[2];
-    hthread[0] = CreateThread(NULL, NULL, handlerRecv, (LPVOID) &sockConnect, 0, NULL);
-    hthread[1] = CreateThread(NULL, NULL, handlerSend, (LPVOID) &sockConnect, 0, NULL);
-    WaitForMultipleObjects(2, hthread, TRUE, INFINITE);
-    CloseHandle(hthread[0]);
-    CloseHandle(hthread[1]);
+    SOCKADDR_IN addrClient2;
+    lenAddr = sizeof(SOCKADDR);
+    sockConnects[1] = accept(sockServer, (SOCKADDR *) &addrClient2, &(lenAddr));
+    if (sockConnects[1] == SOCKET_ERROR) {
+        cout << "Á¬½ÓÊ§°Ü" << endl;
+        getchar();
+        return -1;
+    }
+    cout << "¿Í»§¶Ë2Á¬½Ó³É¹¦,ËüµÄIPÊÇ:" << inet_ntoa(addrClient2.sin_addr) << endl;
 
-    closesocket(sockConnect);
+    HANDLE hthread;
+    hthread = CreateThread(NULL, NULL, handlerTransfer, (LPVOID) sockConnects, 0, NULL);
+    WaitForMultipleObjects(1, &hthread, TRUE, INFINITE);
+    CloseHandle(hthread);
+    
+    closesocket(sockConnects[0]);
+    closesocket(sockConnects[1]);
     closesocket(sockServer);
     WSACleanup();
-
+    getchar();
     return 0;
 }

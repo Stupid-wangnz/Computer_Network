@@ -65,6 +65,7 @@ build CMakeFiles/server.dir/server.cpp.obj: CXX_COMPILER__server_Debug F$:/CL_Wo
 
 build server.exe: CXX_EXECUTABLE_LINKER__server_Debug CMakeFiles/server.dir/server.cpp.obj
   FLAGS = -g
+  LINK_FLAGS = -static
   LINK_LIBRARIES = -lws2_32  -lwsock32  -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32
   OBJECT_DIR = CMakeFiles\server.dir
   POST_BUILD = cd .
@@ -98,6 +99,7 @@ build CMakeFiles/client.dir/client.cpp.obj: CXX_COMPILER__client_Debug F$:/CL_Wo
 
 build client.exe: CXX_EXECUTABLE_LINKER__client_Debug CMakeFiles/client.dir/client.cpp.obj
   FLAGS = -g
+  LINK_FLAGS = -static
   LINK_LIBRARIES = -lws2_32  -lwsock32  -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32
   OBJECT_DIR = CMakeFiles\client.dir
   POST_BUILD = cd .
