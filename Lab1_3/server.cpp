@@ -3,76 +3,99 @@
 #include <windows.h>
 #include <iostream>
 #include <thread>
+#include <map>
 
 #pragma comment(lib, "ws2_32.lib")  //加载 ws2_32.dll
 
 #define PORT 7878
-#define HEAD_SIZE 50
+#define NAME_SIZE 20
+#define TYPE_SIZE 10
+#define HEAD_SIZE 2*NAME_SIZE+TYPE_SIZE
 #define BUF_SIZE 512
 #define MESSAGE_SIZE HEAD_SIZE+BUF_SIZE
+
 #define ADDRSRV "127.0.0.1"
 #define MAXUSER 50
 using namespace std;
 
+static map<string,int>userNameMap;
+
 SOCKET sockConnects[MAXUSER];
-HANDLE hthread[MAXUSER];
 
 void printSysTime(){
     SYSTEMTIME sysTime;
     GetLocalTime(&sysTime);
-    printf("%4d/%02d/%02d %02d:%02d:%02d.%03d 星期%1d\n", sysTime.wYear, sysTime.wMonth, sysTime.wDay,
-           sysTime.wHour, sysTime.wMinute, sysTime.wSecond, sysTime.wMilliseconds, sysTime.wDayOfWeek);
+    printf("[%4d/%02d/%02d %02d:%02d:%02d.%03d]", sysTime.wYear, sysTime.wMonth, sysTime.wDay,
+           sysTime.wHour, sysTime.wMinute, sysTime.wSecond, sysTime.wMilliseconds);
 }
-void transfer2AllUser(int i,const char*message){
+
+void transfer2AllUser(const char*message){
     for(int j=0;j<MAXUSER;j++){
         if(sockConnects[j]!= SOCKET_ERROR)
             send(sockConnects[j],message,MESSAGE_SIZE,0);
     }
 }
 
+void transfer2OneUser(int i,const char*message){
+    send(sockConnects[i],message,MESSAGE_SIZE,0);
+}
+
 DWORD WINAPI handlerTransfer(LPVOID lparam) {
     SOCKET *socket = (SOCKET *) lparam;
-    char message[MESSAGE_SIZE];
+    char type[TYPE_SIZE];
+    char fromUser[NAME_SIZE], toUser[NAME_SIZE];
     char buf[BUF_SIZE];
+    char message[MESSAGE_SIZE];
     char head[HEAD_SIZE];
-    memset(head,0,HEAD_SIZE);
-    memset(buf,0,BUF_SIZE);
+    memset(head, 0, HEAD_SIZE);
+    memset(type, 0, TYPE_SIZE);
+    memset(fromUser, 0, NAME_SIZE);
+    memset(toUser, 0, NAME_SIZE);
     memset(message, 0, MESSAGE_SIZE);
+    memset(buf, 0, BUF_SIZE);
 
     int i = 0;
     for(int j=0;j<MAXUSER;j++,i++)
         if(&sockConnects[j]==socket)
             break;
-    while (1) {
-        int len = recv(*socket, message, MESSAGE_SIZE, 0);
-        if(len==0)
-            continue;
 
-        for(int j=0;j<HEAD_SIZE;j++)
-            head[j]=message[j];
+    while (1) {
+        recv(*socket, message, MESSAGE_SIZE, 0);
+
         for(int j=0;j<BUF_SIZE;j++)
             buf[j]=message[HEAD_SIZE+j];
+        for(int j=0;j<TYPE_SIZE;j++)
+            type[j]=message[j];
+        for(int j=0;j<NAME_SIZE;j++){
+            fromUser[j]=message[j+TYPE_SIZE];
+            toUser[j]=message[j+TYPE_SIZE+NAME_SIZE];
+        }
 
         if (strcmp(buf, "quit") == 0) {
             printSysTime();
-            printf("用户%d已经退出聊天室", i);
-            transfer2AllUser(i, message);
-
-            char temHead[HEAD_SIZE]="SYS";
-            char temMessage[MESSAGE_SIZE];
+            printf("用户[%s]已经退出聊天室\n", fromUser);
+            transfer2AllUser(message);
+            char temMessage[MESSAGE_SIZE]="SYS";
             char temBuf[BUF_SIZE]="exit";
-            strcpy(temMessage,temHead);
+
             for(int j=0;j<MESSAGE_SIZE;j++)
                 temMessage[j+HEAD_SIZE]=temBuf[j];
 
+            userNameMap.erase(string(fromUser));
             send(sockConnects[i],temMessage,MESSAGE_SIZE,0);
             closesocket(sockConnects[i]);
             return 0;
         }
         if (strlen(buf) > 0) {
-            printSysTime();
-            printf("[用户%s]%s\n", head,buf);
-            transfer2AllUser(i, message);
+            if (strcmp(type, "PRI") == 0) {
+                printSysTime();
+                printf("用户[%s]私聊[%s]:%s\n", fromUser, toUser, buf);
+                transfer2OneUser(userNameMap[string(toUser)],message);
+            } else {
+                printSysTime();
+                printf("[用户%s]:%s\n", fromUser, buf);
+                transfer2AllUser(message);
+            }
         }
         memset(message, 0, BUF_SIZE);
     }
@@ -94,7 +117,7 @@ int main() {
     bind(sockServer, (SOCKADDR *) &addrSrv, sizeof(SOCKADDR));
 
     if (listen(sockServer, 10) == 0) {
-        cout << "服务器进入监听状态" << endl;
+        cout << "-----服务器进入监听状态-----" << endl;
     } else {
         cout << "监听失败" << endl;
         return -1;
@@ -121,7 +144,28 @@ int main() {
             sockConnects[index]= SOCKET_ERROR;
             continue;
         }
-        cout << "新客户端连接成功,它的编号是:"<<index<<" IP地址:"<< inet_ntoa(addrClient.sin_addr) << endl;
+        while(1) {
+            char name[NAME_SIZE];
+            string t("TRUE");
+            recv(sockConnects[index], name, NAME_SIZE, 0);
+            if(userNameMap.find(string(name))==userNameMap.end()){
+                userNameMap.insert(pair<string, int>(string(name), index));
+                send(sockConnects[index],t.c_str(),10,0);
+                cout << "新客户端连接成功,它的编号是:" << index << "用户名为:" << name << " IP地址:" << inet_ntoa(addrClient.sin_addr) << endl;
+
+                char mess[MESSAGE_SIZE]="SYS";
+                char b[BUF_SIZE]="新用户了加入聊天室,用户名为:";
+                strcat(b,name);
+                for(int j=0;j<BUF_SIZE;j++)
+                    mess[j+HEAD_SIZE]=b[j];
+                transfer2AllUser(mess);
+                break;
+            }
+            else{
+                t="FALSE";
+                send(sockConnects[index],t.c_str(),10,0);
+            }
+        }
         CloseHandle(CreateThread(NULL,NULL,handlerTransfer,(LPVOID)&sockConnects[index],0,NULL));
     }
 
