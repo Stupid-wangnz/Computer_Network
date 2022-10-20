@@ -12,7 +12,6 @@
 using namespace std;
 
 SOCKET sockConnects[2];
-
 DWORD WINAPI handlerTransfer(LPVOID lparam) {
     SOCKET *socket = (SOCKET *) lparam;
     char buf[BUF_SIZE];
@@ -30,6 +29,7 @@ DWORD WINAPI handlerTransfer(LPVOID lparam) {
         }
         if (len > 0) {
             SYSTEMTIME sysTime;
+
             GetLocalTime(&sysTime);
             printf("%4d/%02d/%02d %02d:%02d:%02d.%03d ÐÇÆÚ%1d\n", sysTime.wYear, sysTime.wMonth, sysTime.wDay,
                    sysTime.wHour, sysTime.wMinute, sysTime.wSecond, sysTime.wMilliseconds, sysTime.wDayOfWeek);
