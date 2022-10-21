@@ -19,8 +19,7 @@
 using namespace std;
 
 static map<string,int>userNameMap;
-
-SOCKET sockConnects[MAXUSER];
+static SOCKET sockConnects[MAXUSER];
 
 void printSysTime(){
     SYSTEMTIME sysTime;
@@ -109,7 +108,6 @@ int main() {
         return -1;
     }
     SOCKET sockServer = socket(AF_INET, SOCK_STREAM, 0);
-
     SOCKADDR_IN addrSrv;
     addrSrv.sin_family = AF_INET;
     addrSrv.sin_port = htons(PORT);

@@ -15,8 +15,8 @@
 #define MESSAGE_SIZE HEAD_SIZE+BUF_SIZE
 
 using namespace std;
-string ADDRSRV;
-char userName[NAME_SIZE];
+static string ADDRSRV;
+static char userName[NAME_SIZE];
 
 void printSysTime() {
     SYSTEMTIME sysTime;
@@ -43,14 +43,14 @@ DWORD WINAPI handlerSend(LPVOID lparam) {
     strcpy(fromUser, userName);
 
     while (1) {
-        cin >> buf;
-
+        cin.getline(buf,512);
         //设计head头信息
 
         //如果输入为@，则是向另一个用户私发信息
         if (strcmp(buf, "@") == 0) {
             cout << "请输入你想私聊的用户名:";
             cin >> toUser;
+            cin.ignore();
             //TYPE是“PRI”是私聊信息
             strcpy(type, "PRI");
             strcpy(head, type);
@@ -59,7 +59,8 @@ DWORD WINAPI handlerSend(LPVOID lparam) {
             for (int j = 0; j < NAME_SIZE; j++)
                 head[j + TYPE_SIZE + NAME_SIZE] = toUser[j];
 
-            cin >> buf;
+            cin.getline(buf,512);
+
         } else {
             //TYPE为“PUB”是群发信息，不需要toUser
             strcpy(type, "PUB");
