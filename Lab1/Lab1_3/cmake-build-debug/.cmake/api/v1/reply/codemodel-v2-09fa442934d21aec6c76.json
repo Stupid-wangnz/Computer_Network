@@ -58,8 +58,8 @@
 	"kind" : "codemodel",
 	"paths" : 
 	{
-		"build" : "F:/CL_WorkSpace/Computer_network/Computer_Network/Lab1_3/cmake-build-debug",
-		"source" : "F:/CL_WorkSpace/Computer_network/Computer_Network/Lab1_3"
+		"build" : "F:/CL_WorkSpace/Computer_network/Computer_Network/Lab1/Lab1_3/cmake-build-debug",
+		"source" : "F:/CL_WorkSpace/Computer_network/Computer_Network/Lab1/Lab1_3"
 	},
 	"version" : 
 	{

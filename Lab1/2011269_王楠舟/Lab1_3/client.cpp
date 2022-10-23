@@ -177,7 +177,6 @@ int main() {
     while(1){
         cout << "[CONNECTED]请输入您的用户名" << endl;
         cin >> userName;
-        cin.ignore();
         send(sockClient,userName,NAME_SIZE,0);
 
         char t[10];

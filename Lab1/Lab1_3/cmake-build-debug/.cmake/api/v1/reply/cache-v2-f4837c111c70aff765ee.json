@@ -55,7 +55,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : "f:/CL_WorkSpace/Computer_network/Computer_Network/Lab1_3/cmake-build-debug"
+			"value" : "f:/CL_WorkSpace/Computer_network/Computer_Network/Lab1/Lab1_3/cmake-build-debug"
 		},
 		{
 			"name" : "CMAKE_CACHE_MAJOR_VERSION",
@@ -623,7 +623,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : "F:/CL_WorkSpace/Computer_network/Computer_Network/Lab1_3"
+			"value" : "F:/CL_WorkSpace/Computer_network/Computer_Network/Lab1/Lab1_3"
 		},
 		{
 			"name" : "CMAKE_INSTALL_PREFIX",
@@ -663,7 +663,7 @@
 				}
 			],
 			"type" : "FILEPATH",
-			"value" : "D:/CLION2~1.1/bin/ninja/win/ninja.exe"
+			"value" : "D:/CLion 2022.1/bin/ninja/win/ninja.exe"
 		},
 		{
 			"name" : "CMAKE_MODULE_LINKER_FLAGS",
@@ -1239,7 +1239,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "F:/CL_WorkSpace/Computer_network/Computer_Network/Lab1_3/cmake-build-debug"
+			"value" : "F:/CL_WorkSpace/Computer_network/Computer_Network/Lab1/Lab1_3/cmake-build-debug"
 		},
 		{
 			"name" : "Lab1_3_IS_TOP_LEVEL",
@@ -1263,7 +1263,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "F:/CL_WorkSpace/Computer_network/Computer_Network/Lab1_3"
+			"value" : "F:/CL_WorkSpace/Computer_network/Computer_Network/Lab1/Lab1_3"
 		}
 	],
 	"kind" : "cache",

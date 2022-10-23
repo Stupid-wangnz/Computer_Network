@@ -41,7 +41,6 @@ void transfer2OneUser(int i,const char*message){
 
 DWORD WINAPI handlerTransfer(LPVOID lparam) {
     SOCKET *socket = (SOCKET *) lparam;
-
     char type[TYPE_SIZE];
     char fromUser[NAME_SIZE], toUser[NAME_SIZE];
     char buf[BUF_SIZE];
@@ -84,7 +83,6 @@ DWORD WINAPI handlerTransfer(LPVOID lparam) {
             userNameMap.erase(string(fromUser));
             send(sockConnects[i],temMessage,MESSAGE_SIZE,0);
             closesocket(sockConnects[i]);
-            sockConnects[i]=SOCKET_ERROR;
             return 0;
         }
         if (strlen(buf) > 0) {
