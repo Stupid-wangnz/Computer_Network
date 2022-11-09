@@ -67,6 +67,48 @@ bool connectToServer(SOCKET &socket, SOCKADDR_IN &addr) {
     return true;
 }
 
+bool disConnect(SOCKET &socket, SOCKADDR_IN &addr){
+
+    int addrLen= sizeof(addr);
+    char *buffer=new char[sizeof(packetHead)];
+    packetHead closeHead;
+    closeHead.flag|=FIN;
+    closeHead.checkSum= checkPacketSum((u_short*)&closeHead, sizeof(packetHead));
+
+    memcpy(buffer, &closeHead, sizeof(packetHead));
+    sendto(socket, buffer, sizeof(packetHead), 0, (SOCKADDR *) &addr, addrLen);
+
+    recvfrom(socket, buffer, sizeof(packetHead), 0, (sockaddr *) &addr, &addrLen);
+
+    if ((((packetHead*)buffer)->flag & ACK) && (checkPacketSum((u_short *) buffer, sizeof(packetHead) == 0))) {
+        cout << "客户端已经断开" << endl;
+    } else {
+        cout << "错误发生，程序中断" << endl;
+        return false;
+    }
+
+    recvfrom(socket,buffer, sizeof(packetHead),0,(SOCKADDR*)&addr,&addrLen);
+
+    if ((((packetHead*)buffer)->flag & FIN) && (checkPacketSum((u_short *) buffer, sizeof(packetHead) == 0))){
+        cout<<"服务器断开"<<endl;
+    }
+    else{
+        cout<<"错误发生，程序中断"<<endl;
+        return false;
+    }
+
+    closeHead.flag=0;
+    closeHead.flag|=ACK;
+    closeHead.checkSum= checkPacketSum((u_short*)&closeHead, sizeof(packetHead));
+    memcpy(buffer, &closeHead, sizeof(packetHead));
+    sendto(socket, buffer, sizeof(packetHead), 0, (SOCKADDR *) &addr, addrLen);
+    clock_t start=clock();
+    while(clock()-start<=CLOCKS_PER_SEC/20);
+
+    cout<<"连接关闭"<<endl;
+    return true;
+}
+
 packet makePacket(int seq, char *data, int len) {
     packet pkt;
     pkt.head.seq = seq;
@@ -95,11 +137,14 @@ void sendFSM(u_long len, char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
 
         if (index == packetNum){
             cout<<"传输完成"<<endl;
+
+            //just close it，四次挥手
             packetHead endPacket;
             endPacket.flag|=END;
             endPacket.checkSum= checkPacketSum((u_short*)&endPacket, sizeof(packetHead));
             memcpy(pkt_buffer,&endPacket, sizeof(packetHead));
             sendto(socket, pkt_buffer, sizeof(packetHead), 0, (SOCKADDR *) &addr, addrLen);
+
             return;
         }
         packetDataLen = min(MAX_DATA_SIZE,len-index*MAX_DATA_SIZE);
@@ -173,6 +218,7 @@ int main() {
         return -1;
     }
     SOCKET sockClient = socket(AF_INET, SOCK_DGRAM, 0);
+
     u_long imode = 1;
     ioctlsocket(sockClient, FIONBIO, &imode);//非阻塞
 
@@ -183,10 +229,14 @@ int main() {
     addrSrv.sin_family = AF_INET;
     addrSrv.sin_port = htons(PORT);
     addrSrv.sin_addr.S_un.S_addr = inet_addr(ADDRSRV.c_str());
-    connectToServer(sockClient,addrSrv);
+
+    if(!connectToServer(sockClient,addrSrv)){
+        cout<<"连接失败"<<endl;
+        return 0;
+    }
 
     string filename;
-    cout << "请输入文件名" << endl;
+    cout << "请输入需要传输的文件名" << endl;
     cin >> filename;
 
     ifstream infile(filename, ifstream::binary);
@@ -205,6 +255,17 @@ int main() {
     infile.read(fileBuffer, fileLen);
     infile.close();
     //cout.write(fileBuffer,fileLen);
+    cout<<"开始传输"<<endl;
 
     sendFSM(fileLen,fileBuffer,sockClient,addrSrv);
+    //进入阻塞
+    imode = 0;
+    ioctlsocket(sockClient, FIONBIO, &imode);
+
+    if(!disConnect(sockClient,addrSrv)){
+        cout<<"断开失败"<<endl;
+        return 0;
+    }
+
+    return 1;
 }

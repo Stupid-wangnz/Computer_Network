@@ -63,6 +63,43 @@ bool acceptClient(SOCKET &socket, SOCKADDR_IN &addr) {
     return true;
 }
 
+bool disConnect(SOCKET&socket,SOCKADDR_IN&addr){
+    int addrLen= sizeof(addr);
+    char *buffer=new char[sizeof(packetHead)];
+
+    recvfrom(socket,buffer, sizeof(packetHead),0,(SOCKADDR*)&addr,&addrLen);
+    if ((((packetHead*)buffer)->flag & FIN) && (checkPacketSum((u_short *) buffer, sizeof(packetHead) == 0))){
+        cout<<"用户端断开"<<endl;
+    }
+    else{
+        cout<<"错误发生，程序中断"<<endl;
+        return false;
+    }
+
+    packetHead closeHead;
+    closeHead.flag=0;
+    closeHead.flag|=ACK;
+    closeHead.checkSum= checkPacketSum((u_short*)&closeHead, sizeof(packetHead));
+    memcpy(buffer, &closeHead, sizeof(packetHead));
+    sendto(socket, buffer, sizeof(packetHead), 0, (SOCKADDR *) &addr, addrLen);
+
+
+    closeHead.flag|=FIN;
+    closeHead.checkSum= checkPacketSum((u_short*)&closeHead, sizeof(packetHead));
+    memcpy(buffer, &closeHead, sizeof(packetHead));
+    sendto(socket, buffer, sizeof(packetHead), 0, (SOCKADDR *) &addr, addrLen);
+
+    recvfrom(socket, buffer, sizeof(packetHead), 0, (sockaddr *) &addr, &addrLen);
+    if ((((packetHead*)buffer)->flag & ACK) && (checkPacketSum((u_short *) buffer, sizeof(packetHead) == 0))) {
+        cout << "链接关闭" << endl;
+    } else {
+        cout << "错误发生，程序中断" << endl;
+        return false;
+    }
+
+    return true;
+}
+
 packet makePacket(int ack){
     packet pkt;
     pkt.head.ack=ack;
@@ -173,11 +210,19 @@ int main() {
     bind(sockSrv, (SOCKADDR *) &addrSrv, sizeof(SOCKADDR));
 
     SOCKADDR_IN addrClient;
-    acceptClient(sockSrv, addrClient);
+
+    if(!acceptClient(sockSrv, addrClient)){
+        cout<<"连接失败"<<endl;
+        return 0;
+    }
 
     char fileBuffer[MAX_FILE_SIZE];
     u_long fileLen= recvFSM(fileBuffer,sockSrv,addrClient);
 
+    if(!disConnect(sockSrv,addrClient)){
+        cout<<"断开失败"<<endl;
+        return 0;
+    }
 
     string filename=R"(F:\Computer_network\Computer_Network\Lab3\Lab3_1\img_test_recv.bmp)";
     ofstream outfile(filename,ios::binary);
@@ -189,4 +234,5 @@ int main() {
     outfile.write(fileBuffer,fileLen);
     outfile.close();
 
+    return 1;
 }
