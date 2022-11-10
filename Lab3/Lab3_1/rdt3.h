@@ -48,6 +48,7 @@ u_short checkPacketSum(u_short *packet, int packetLen) {
     return ~(sum & 0xFFFF);
 }
 
-void clearPacket(packet*pkt){
-    memset(pkt,0, sizeof(packet));
-}
+struct UDP_RDT{
+    SOCKET *socket;
+    SOCKADDR_IN *addr;
+};
