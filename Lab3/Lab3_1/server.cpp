@@ -134,6 +134,11 @@ u_long recvFSM(char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
 
                 if (pkt.head.flag & END) {
                     cout << "传输完毕" << endl;
+                    packetHead endPacket;
+                    endPacket.flag |= ACK;
+                    endPacket.checkSum = checkPacketSum((u_short *) &endPacket, sizeof(packetHead));
+                    memcpy(pkt_buffer, &endPacket, sizeof(packetHead));
+                    sendto(socket, pkt_buffer, sizeof(packetHead), 0, (SOCKADDR *) &addr, addrLen);
                     return fileLen;
                 }
 
@@ -166,8 +171,14 @@ u_long recvFSM(char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
                 recvfrom(socket, pkt_buffer, sizeof(packet), 0, (SOCKADDR *) &addr, &addrLen);
 
                 memcpy(&pkt, pkt_buffer, sizeof(packetHead));
+
                 if (pkt.head.flag & END) {
                     cout << "传输完毕" << endl;
+                    packetHead endPacket;
+                    endPacket.flag |= ACK;
+                    endPacket.checkSum = checkPacketSum((u_short *) &endPacket, sizeof(packetHead));
+                    memcpy(pkt_buffer, &endPacket, sizeof(packetHead));
+                    sendto(socket, pkt_buffer, sizeof(packetHead), 0, (SOCKADDR *) &addr, addrLen);
                     return fileLen;
                 }
 
@@ -218,19 +229,22 @@ int main() {
 
     SOCKADDR_IN addrClient;
 
+    //三次握手建立连接
     if (!acceptClient(sockSrv, addrClient)) {
         cout << "连接失败" << endl;
         return 0;
     }
 
     char fileBuffer[MAX_FILE_SIZE];
+    //可靠数据传输过程
     u_long fileLen = recvFSM(fileBuffer, sockSrv, addrClient);
-
+    //四次挥手断开连接
     if (!disConnect(sockSrv, addrClient)) {
         cout << "断开失败" << endl;
         return 0;
     }
 
+    //写入复制文件
     string filename = R"(F:\Computer_network\Computer_Network\Lab3\Lab3_1\test_recv.txt)";
     ofstream outfile(filename, ios::binary);
     if (!outfile.is_open()) {
@@ -240,6 +254,6 @@ int main() {
     cout << fileLen << endl;
     outfile.write(fileBuffer, fileLen);
     outfile.close();
-
+    getchar();
     return 1;
 }

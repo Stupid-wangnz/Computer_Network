@@ -7,7 +7,7 @@
 #define FIN 0x4
 #define END 0x8
 
-#define MAX_DATA_SIZE 1024
+#define MAX_DATA_SIZE 2048
 using namespace std;
 
 struct packetHead {
@@ -24,7 +24,7 @@ struct packetHead {
     }
 };
 
-struct packet{
+struct packet {
     packetHead head;
     char data[MAX_DATA_SIZE];
 };
@@ -48,7 +48,7 @@ u_short checkPacketSum(u_short *packet, int packetLen) {
     return ~(sum & 0xFFFF);
 }
 
-struct UDP_RDT{
+struct UDP_Connect {
     SOCKET *socket;
     SOCKADDR_IN *addr;
 };

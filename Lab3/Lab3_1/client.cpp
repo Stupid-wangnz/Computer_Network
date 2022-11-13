@@ -170,16 +170,24 @@ void sendFSM(u_long len, char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
     cout << "本次文件数据长度为" << len << "Bytes,需要传输" << packetNum << "个数据包" << endl;
 
     while (true) {
-
         if (index == packetNum) {
-            cout << "传输完成" << endl;
-
-            //just close it，四次挥手
             packetHead endPacket;
             endPacket.flag |= END;
             endPacket.checkSum = checkPacketSum((u_short *) &endPacket, sizeof(packetHead));
             memcpy(pkt_buffer, &endPacket, sizeof(packetHead));
             sendto(socket, pkt_buffer, sizeof(packetHead), 0, (SOCKADDR *) &addr, addrLen);
+
+            while (recvfrom(socket, pkt_buffer, sizeof(packetHead), 0, (SOCKADDR *) &addr, &addrLen) <= 0) {
+                if (clock() - start >= MAX_TIME) {
+                    memcpy(pkt_buffer, &endPacket, sizeof(packetHead));
+                    sendto(socket, pkt_buffer, sizeof(packetHead), 0, (SOCKADDR *) &addr, addrLen);
+                    start = clock();
+                }
+            }
+
+            if (((packetHead *) (pkt_buffer))->flag & ACK) {
+                cout << "文件传输完成" << endl;
+            }
 
             return;
         }
@@ -300,6 +308,7 @@ int main() {
         cout << "断开失败" << endl;
         return 0;
     }
-
+    getchar();
+    getchar();
     return 1;
 }
