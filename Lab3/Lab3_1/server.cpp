@@ -15,7 +15,8 @@ using namespace std;
 
 #define PORT 7878
 #define ADDRSRV "127.0.0.1"
-#define MAX_FILE_SIZE 1000000
+#define MAX_FILE_SIZE 100000000
+char fileBuffer[MAX_FILE_SIZE];
 double MAX_TIME = CLOCKS_PER_SEC;
 
 bool acceptClient(SOCKET &socket, SOCKADDR_IN &addr) {
@@ -235,7 +236,7 @@ int main() {
         return 0;
     }
 
-    char fileBuffer[MAX_FILE_SIZE];
+    //char fileBuffer[MAX_FILE_SIZE];
     //可靠数据传输过程
     u_long fileLen = recvFSM(fileBuffer, sockSrv, addrClient);
     //四次挥手断开连接
@@ -245,7 +246,7 @@ int main() {
     }
 
     //写入复制文件
-    string filename = R"(F:\Computer_network\Computer_Network\Lab3\Lab3_1\test_recv.txt)";
+    string filename = R"(F:\Computer_network\Computer_Network\Lab3\Lab3_1\workfile3_1\3_recv.jpg)";
     ofstream outfile(filename, ios::binary);
     if (!outfile.is_open()) {
         cout << "打开文件出错" << endl;
