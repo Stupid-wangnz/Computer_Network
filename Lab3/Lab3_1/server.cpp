@@ -26,7 +26,9 @@ bool acceptClient(SOCKET &socket, SOCKADDR_IN &addr) {
     recvfrom(socket, buffer, sizeof(packetHead), 0, (SOCKADDR *) &addr, &len);
 
     if ((((packetHead *) buffer)->flag & SYN) && (checkPacketSum((u_short *) buffer, sizeof(packetHead)) == 0))
-        cout << "第一次握手成功" << endl;
+        cout << "[SYN_RECV]第一次握手成功" << endl;
+    else
+        return false;
 
     packetHead head;
     head.flag |= ACK;
@@ -34,10 +36,9 @@ bool acceptClient(SOCKET &socket, SOCKADDR_IN &addr) {
     head.checkSum = checkPacketSum((u_short *) &head, sizeof(packetHead));
     memcpy(buffer, &head, sizeof(packetHead));
     if (sendto(socket, buffer, sizeof(packetHead), 0, (sockaddr *) &addr, len) == -1) {
-        cout << "第二次握手失败" << endl;
         return false;
     }
-    cout << "第二次握手成功" << endl;
+    cout << "[SYN_ACK_SEND]第二次握手成功" << endl;
 
     u_long imode = 1;
     ioctlsocket(socket, FIONBIO, &imode);//非阻塞
@@ -45,20 +46,20 @@ bool acceptClient(SOCKET &socket, SOCKADDR_IN &addr) {
     clock_t start = clock(); //开始计时
     while (recvfrom(socket, buffer, sizeof(head), 0, (sockaddr *) &addr, &len) <= 0) {
         if (clock() - start >= MAX_TIME) {
-            cout << "超时重传" << endl;
             sendto(socket, buffer, sizeof(buffer), 0, (sockaddr *) &addr, len);
             start = clock();
         }
     }
 
     if ((((packetHead *) buffer)->flag & ACK) && (checkPacketSum((u_short *) buffer, sizeof(packetHead)) == 0)) {
-        cout << "第三次握手成功" << endl;
+        cout << "[ACK_RECV]第三次握手成功" << endl;
     } else {
-        cout << "第三次握手失败" << endl;
         return false;
     }
     imode = 0;
     ioctlsocket(socket, FIONBIO, &imode);//阻塞
+
+    cout<<"[CONNECTED]与用户端成功建立连接，准备接收文件"<<endl;
     return true;
 }
 
@@ -134,7 +135,7 @@ u_long recvFSM(char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
                 memcpy(&pkt, pkt_buffer, sizeof(packetHead));
 
                 if (pkt.head.flag & END) {
-                    cout << "传输完毕" << endl;
+                    cout << "[SYSTEM]传输完毕" << endl;
                     packetHead endPacket;
                     endPacket.flag |= ACK;
                     endPacket.checkSum = checkPacketSum((u_short *) &endPacket, sizeof(packetHead));
@@ -150,7 +151,7 @@ u_long recvFSM(char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
                     memcpy(pkt_buffer, &sendPkt, sizeof(packet));
                     sendto(socket, pkt_buffer, sizeof(packet), 0, (SOCKADDR *) &addr, addrLen);
                     stage = 0;
-                    cout << "收到重复的" << index - 1 << "号数据包，将其抛弃" << endl;
+                    cout << "[SYSTEM]收到重复的" << index - 1 << "号数据包，将其抛弃" << endl;
                     break;
                 }
 
@@ -174,7 +175,7 @@ u_long recvFSM(char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
                 memcpy(&pkt, pkt_buffer, sizeof(packetHead));
 
                 if (pkt.head.flag & END) {
-                    cout << "传输完毕" << endl;
+                    cout << "[SYSTEM]传输完毕" << endl;
                     packetHead endPacket;
                     endPacket.flag |= ACK;
                     endPacket.checkSum = checkPacketSum((u_short *) &endPacket, sizeof(packetHead));
@@ -190,7 +191,7 @@ u_long recvFSM(char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
                     memcpy(pkt_buffer, &sendPkt, sizeof(packet));
                     sendto(socket, pkt_buffer, sizeof(packet), 0, (SOCKADDR *) &addr, addrLen);
                     stage = 1;
-                    cout << "收到重复的" << index - 1 << "号数据包，将其抛弃" << endl;
+                    cout << "[SYSTEM]收到重复的" << index - 1 << "号数据包，将其抛弃" << endl;
                     break;
                 }
 
@@ -217,7 +218,7 @@ int main() {
     WSAData wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
         //加载失败
-        cout << "加载DLL失败" << endl;
+        cout << "[ERROR]加载DLL失败" << endl;
         return -1;
     }
     SOCKET sockSrv = socket(AF_INET, SOCK_DGRAM, 0);
@@ -232,7 +233,7 @@ int main() {
 
     //三次握手建立连接
     if (!acceptClient(sockSrv, addrClient)) {
-        cout << "连接失败" << endl;
+        cout << "[ERROR]连接失败" << endl;
         return 0;
     }
 
@@ -241,7 +242,7 @@ int main() {
     u_long fileLen = recvFSM(fileBuffer, sockSrv, addrClient);
     //四次挥手断开连接
     if (!disConnect(sockSrv, addrClient)) {
-        cout << "断开失败" << endl;
+        cout << "[ERROR]断开失败" << endl;
         return 0;
     }
 
@@ -249,12 +250,14 @@ int main() {
     string filename = R"(F:\Computer_network\Computer_Network\Lab3\Lab3_1\workfile3_1\3_recv.jpg)";
     ofstream outfile(filename, ios::binary);
     if (!outfile.is_open()) {
-        cout << "打开文件出错" << endl;
+        cout << "[ERROR]打开文件出错" << endl;
         return 0;
     }
     cout << fileLen << endl;
     outfile.write(fileBuffer, fileLen);
     outfile.close();
+
+    cout<<"文件复制完毕"<<endl;
     getchar();
     return 1;
 }
