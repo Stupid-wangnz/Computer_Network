@@ -15,9 +15,11 @@ using namespace std;
 
 #define PORT 7878
 #define ADDRSRV "127.0.0.1"
-#define MAX_FILE_SIZE 1000000
+#define MAX_FILE_SIZE 100000000
 double MAX_TIME = CLOCKS_PER_SEC;
 static u_int initSeq = 0;
+
+char fileBuffer[MAX_FILE_SIZE];
 
 bool acceptClient(SOCKET &socket, SOCKADDR_IN &addr) {
 
@@ -132,7 +134,7 @@ u_long recvFSM(char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
         memset(pkt_buffer, 0, sizeof(packet));
         recvfrom(socket, pkt_buffer, sizeof(packet), 0, (SOCKADDR *) &addr, &addrLen);
         memcpy(&recvPkt,pkt_buffer, sizeof(packet));
-
+        cout<<"recv"<<endl;
         if (recvPkt.head.flag & END && checkPacketSum((u_short*)&recvPkt, sizeof(packetHead))==0) {
             cout << "传输完毕" << endl;
             packetHead endPacket;
@@ -165,7 +167,7 @@ u_long recvFSM(char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
 }
 
 int main() {
-    WSAData wsaData;
+    WSAData wsaData{};
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
         //加载失败
         cout << "加载DLL失败" << endl;
@@ -187,7 +189,6 @@ int main() {
         return 0;
     }
 
-    char fileBuffer[MAX_FILE_SIZE];
     //可靠数据传输过程
     u_long fileLen = recvFSM(fileBuffer, sockSrv, addrClient);
     //四次挥手断开连接
@@ -197,7 +198,7 @@ int main() {
     }
 
     //写入复制文件
-    string filename = R"(F:\Computer_network\Computer_Network\Lab3\Lab3_2\test_recv.txt)";
+    string filename = R"(F:\Computer_network\Computer_Network\Lab3\Lab3_2\workfile3_1\3_recv.jpg)";
     ofstream outfile(filename, ios::binary);
     if (!outfile.is_open()) {
         cout << "打开文件出错" << endl;

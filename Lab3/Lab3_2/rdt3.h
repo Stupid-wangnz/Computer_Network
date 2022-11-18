@@ -7,7 +7,7 @@
 #define FIN 0x4
 #define END 0x8
 
-#define MAX_DATA_SIZE 2048
+#define MAX_DATA_SIZE 8192
 #define MAX_SEQ 0xffff
 using namespace std;
 

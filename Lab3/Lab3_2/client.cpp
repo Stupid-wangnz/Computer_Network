@@ -218,7 +218,7 @@ void sendFSM(u_long len, char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
             }
             nextSeqNum = (nextSeqNum + 1) % MAX_SEQ;
             sendIndex++;
-            //cout<<sendIndex<<"号数据包已经发送"<<endl;
+            cout << sendIndex << "号数据包已经发送" << endl;
         }
 
         while (recvfrom(socket, pkt_buffer, sizeof(packet), 0, (SOCKADDR *) &addr, &addrLen) > 0) {
@@ -228,11 +228,12 @@ void sendFSM(u_long len, char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
                 goto time_out;
             //not corrupt
             cout << "base:" << base << " nextSeq:" << nextSeqNum << " endWindow:" << base + windowSize << endl;
-            if (base < (recvPkt.head.ack + 1) ) {
-                for (int i = 0; i < (int) waitingNum(base, nextSeqNum) - 1; i++) {
-                    sendPkt[i] = sendPkt[i + 1];
+            if (base < (recvPkt.head.ack + 1)) {
+                int d = recvPkt.head.ack + 1 - base;
+                for (int i = 0; i < (int) waitingNum(base, nextSeqNum) - d; i++) {
+                    sendPkt[i] = sendPkt[i + d];
                 }
-                recvIndex++;
+                recvIndex+=d;
             }
             base = (max((recvPkt.head.ack + 1), base)) % MAX_SEQ;
             if (base == nextSeqNum)
@@ -246,6 +247,7 @@ void sendFSM(u_long len, char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
 
         time_out:
         if (!stopTimer && clock() - start >= MAX_TIME) {
+            cout << "resend" << endl;
             for (int i = 0; i < (int) waitingNum(base, nextSeqNum); i++) {
                 memcpy(pkt_buffer, &sendPkt[i], sizeof(packet));
                 sendto(socket, pkt_buffer, sizeof(packet), 0, (SOCKADDR *) &addr, addrLen);
