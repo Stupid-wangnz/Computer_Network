@@ -761,11 +761,21 @@ bool disConnect(SOCKET &socket, SOCKADDR_IN &addr) {
 
 可以见到丢包率为5%，在客户端能看到5%的重传次数，并且接收到文件长度为`685421Byte`和在客户端读入文件时确认的长度一致，证明传输的可靠性。
 
+可以通过在ShowLog打印出更详细的日志：
+
+<img src="Lab3_1\img\image-20221119133200622.png" alt="image-20221119133200622" style="zoom:67%;" />
+
+<img src="Lab3_1\img\image-20221119133235899.png" alt="image-20221119133235899" style="zoom:67%;" />
+
 **传输结果对比：**
 
 <img src="Lab3_1\img\image-20221113192640466.png" alt="image-20221113192640466" style="zoom:67%;" />
 
-<img src="Lab3_1\img\image-20221113192737340.png" alt="image-20221113192737340" style="zoom:67%;" />
+![image-20221119133314159](Lab3_1\img\image-20221119133314159.png)
+
+![image-20221119133336063](Lab3_1\img\image-20221119133336063.png)
+
+![image-20221119133348934](Lab3_1\img\image-20221119133348934.png)
 
 可见无论哪种类型的文件，传输前后都是一致的，验证了传输的可靠性。
 

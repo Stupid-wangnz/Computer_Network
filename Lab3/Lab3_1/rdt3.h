@@ -1,35 +1,38 @@
 //
 // Created by LEGION on 2022-11-09.
 //
+#include <stdio.h>
 
 #define SYN 0x1
 #define ACK 0x2
 #define FIN 0x4
 #define END 0x8
 
-#define MAX_DATA_SIZE 2048
+#define MAX_DATA_SIZE 8192
 using namespace std;
 
-struct packetHead {
+#define OUTPUT_LOG
+
+struct PacketHead {
     u_int seq;
     u_int ack;
     u_short checkSum;
     u_short bufSize;
     char flag;
 
-    packetHead() {
+    PacketHead() {
         seq = ack = 0;
         checkSum = bufSize = 0;
         flag = 0;
     }
 };
 
-struct packet {
-    packetHead head;
+struct Packet {
+    PacketHead head;
     char data[MAX_DATA_SIZE];
 };
 
-u_short checkPacketSum(u_short *packet, int packetLen) {
+u_short CheckPacketSum(u_short *packet, int packetLen) {
 
     u_long sum = 0;
     int count = (packetLen + 1) / 2;
@@ -48,7 +51,10 @@ u_short checkPacketSum(u_short *packet, int packetLen) {
     return ~(sum & 0xFFFF);
 }
 
-struct UDP_Connect {
-    SOCKET *socket;
-    SOCKADDR_IN *addr;
-};
+void ShowPacket(Packet *pkt) {
+#ifdef OUTPUT_LOG
+    printf("[SYN:%d\tACK:%d\tFIN:%d\tEND:%d]SEQ:%d\tACK:%d\tLEN:%d\n",
+           pkt->head.flag & 0x1, pkt->head.flag >> 1 & 0x1, pkt->head.flag >> 2 & 0x1, pkt->head.flag >> 3 & 0x1,
+           pkt->head.seq, pkt->head.ack, pkt->head.bufSize);
+#endif
+}
