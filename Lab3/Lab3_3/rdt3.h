@@ -46,6 +46,7 @@ u_short CheckPacketSum(u_short *packet, int packetLen) {
             sum++;
         }
     }
+
     return ~(sum & 0xFFFF);
 }
 

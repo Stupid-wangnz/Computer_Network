@@ -216,7 +216,7 @@ int main() {
     }
 
     //写入复制文件
-    string filename = R"(F:\Computer_network\Computer_Network\Lab3\Lab3_1\workfile3_1\1_recv.jpg)";
+    string filename = R"(F:\Computer_network\Computer_Network\Lab3\Lab3_3\workfile3_1\1_recv.jpg)";
     ofstream outfile(filename, ios::binary);
     if (!outfile.is_open()) {
         cout << "[ERROR]打开文件出错" << endl;

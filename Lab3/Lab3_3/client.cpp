@@ -15,20 +15,23 @@ using namespace std;
 #define min(a, b) a>b?b:a
 #define max(a, b) a>b?a:b
 #define PORT 7879
+#define MSS MAX_DATA_SIZE
 double MAX_TIME = CLOCKS_PER_SEC;
 
 string ADDRSRV;
-static int windowSize = 16;
-static unsigned int base = 0;//握手阶段确定的初始序列号
-static float cwnd = 1;
-static int ssthresh = 20;
-static int dupACKCount = 0;
 
-u_int waitingNum(u_int nextSeq) {
-    if (nextSeq >= base)
-        return nextSeq - base;
-    return nextSeq + MAX_SEQ - base;
-}
+static const u_long windowSize = 16 * MSS;
+static unsigned int base = 0;//握手阶段确定的初始序列号
+
+static u_long cwnd = MSS;
+static int ssthresh = 20 * MSS;
+static int dupACKCount = 0;
+//sender缓冲区
+
+enum {
+    START_UP, AVOID, RECOVERY
+};
+static int RENO_STAGE = START_UP;
 
 bool connectToServer(SOCKET &socket, SOCKADDR_IN &addr) {
     int len = sizeof(addr);
@@ -160,32 +163,24 @@ Packet makePacket(u_int seq, char *data, int len) {
     return pkt;
 }
 
-bool inWindows(u_int seq) {
-    int windows = min(windowSize, cwnd);
-    if (seq >= base && seq < base + windows)
-        return true;
-    if (seq < base && seq < ((base + windows) % MAX_SEQ))
-        return true;
-
-    return false;
-}
-
 void sendFSM(u_long len, char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
 
     int packetNum = int(len / MAX_DATA_SIZE) + (len % MAX_DATA_SIZE ? 1 : 0);
-    int sendIndex = 0, recvIndex = 0;
     int packetDataLen;
     int addrLen = sizeof(addr);
     clock_t start;
     bool stopTimer = false;
-    char *data_buffer = new char[packetDataLen], *pkt_buffer = new char[sizeof(Packet)];
+    char *data_buffer = new char[sizeof(Packet)], *pkt_buffer = new char[sizeof(Packet)];
     Packet recvPkt;
     u_int nextSeqNum = base;
-    Packet sendPkt[windowSize];
+    Packet sendPkt[100]{};
     cout << "本次文件数据长度为" << len << "Bytes,需要传输" << packetNum << "个数据包" << endl;
 
+    u_long lastSendByte = 0, lastAckByte = 0;
+
     while (true) {
-        if (recvIndex == packetNum) {
+
+        if (lastAckByte >= len) {
             PacketHead endPacket;
             endPacket.flag |= END;
             endPacket.checkSum = CheckPacketSum((u_short *) &endPacket, sizeof(PacketHead));
@@ -209,13 +204,15 @@ void sendFSM(u_long len, char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
             continue;
         }
 
-        packetDataLen = min(MAX_DATA_SIZE, len - sendIndex * MAX_DATA_SIZE);
+        u_long window = min(cwnd, windowSize);
 
-        if (inWindows(nextSeqNum) && sendIndex < packetNum) {
-
-            memcpy(data_buffer, fileBuffer + sendIndex * MAX_DATA_SIZE, packetDataLen);
-            sendPkt[(int) waitingNum(nextSeqNum)] = makePacket(nextSeqNum, data_buffer, packetDataLen);
-            memcpy(pkt_buffer, &sendPkt[(int) waitingNum(nextSeqNum)], sizeof(Packet));
+        if ((lastSendByte < lastAckByte + window) && (lastSendByte < len)) {
+            cout << "remain len:" << len - lastSendByte << endl;
+            packetDataLen = min(lastAckByte + window - lastSendByte, MSS);
+            packetDataLen = min(packetDataLen, len - lastSendByte);
+            memcpy(data_buffer, fileBuffer + lastSendByte, packetDataLen);
+            sendPkt[nextSeqNum - base] = makePacket(nextSeqNum, data_buffer, packetDataLen);
+            memcpy(pkt_buffer, &sendPkt[nextSeqNum - base], sizeof(Packet));
             sendto(socket, pkt_buffer, sizeof(Packet), 0, (SOCKADDR *) &addr, addrLen);
 
             if (base == nextSeqNum) {
@@ -223,8 +220,12 @@ void sendFSM(u_long len, char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
                 stopTimer = false;
             }
             nextSeqNum = (nextSeqNum + 1) % MAX_SEQ;
-            sendIndex++;
-            cout << sendIndex << "号数据包已经发送" << endl;
+            lastSendByte += packetDataLen;
+            cout << "base:" << base << " nextSeq:" << nextSeqNum << endl;
+            cout << "cwnd:" << cwnd << "\tpacket len:" << packetDataLen << endl;
+            cout << "Send:[lastACKByte:" << lastAckByte << "\tlastSendByte:" << lastSendByte << "\tlastWritenByte:"
+                 << lastAckByte + window << "]" << endl;
+            continue;
         }
 
         while (recvfrom(socket, pkt_buffer, sizeof(Packet), 0, (SOCKADDR *) &addr, &addrLen) > 0) {
@@ -235,23 +236,52 @@ void sendFSM(u_long len, char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
             //not corrupt
             if (base < (recvPkt.head.ack + 1)) {
                 int d = recvPkt.head.ack + 1 - base;
-                for (int i = 0; i < (int) waitingNum(nextSeqNum) - d; i++) {
+                cout << "confirm:" << d << endl;
+                for (int i = 0; i < d; i++) {
+                    lastAckByte += sendPkt[i].head.bufSize;
+                }
+                for (int i = 0; i < nextSeqNum - base - d; i++) {
                     sendPkt[i] = sendPkt[i + d];
                 }
-                recvIndex += d;
-                if(cwnd < ssthresh){
-                    cwnd+=d;
-                    dupACKCount=0;
-                }else{
-                    cwnd=cwnd+d/cwnd;
+
+
+                switch (RENO_STAGE) {
+                    case START_UP:
+                        cwnd += MSS;
+                        dupACKCount = 0;
+                        if (cwnd >= ssthresh)
+                            RENO_STAGE = AVOID;
+                        break;
+                    case AVOID:
+                        cwnd += MSS * MSS / cwnd;
+                        dupACKCount = 0;
+                        break;
+                    case RECOVERY:
+                        cwnd = ssthresh;
+                        dupACKCount = 0;
+                        RENO_STAGE = AVOID;
+                        break;
                 }
-                base = (max((recvPkt.head.ack + 1), base)) % MAX_SEQ;
-                cout << "base:" << base << " nextSeq:" << nextSeqNum << " endWindow:" << (base + min(windowSize, cwnd))
-                     << endl;
-            }else{
+                window = min(cwnd, windowSize);
+                base += d;
+                cout << "base:" << base << " nextSeq:" << nextSeqNum << endl;
+                cout << "cwnd:" << cwnd << endl;
+                cout << "ACK:[lastACKByte:" << lastAckByte << "\tlastSendByte:" << lastSendByte << "\tlastWritenByte:"
+                     << lastAckByte + window << "]" << endl;
+            } else {
                 //duplicate ACK
                 dupACKCount++;
+                if (RENO_STAGE == START_UP || RENO_STAGE == AVOID) {
+                    if (dupACKCount == 3) {
+                        ssthresh = cwnd / 2;
+                        cwnd = ssthresh + 3 * MSS;
+                        RENO_STAGE = RECOVERY;
+                    }
+                } else {
+                    cwnd += MSS;
+                }
             }
+
             if (base == nextSeqNum)
                 stopTimer = true;
             else {
@@ -263,14 +293,23 @@ void sendFSM(u_long len, char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
 
         time_out:
         if (!stopTimer && clock() - start >= MAX_TIME) {
+            cout << "time out!" << endl;
+            ssthresh = cwnd / 2;
+            cwnd = MSS;
+            dupACKCount = 0;
+            RENO_STAGE = START_UP;
             cout << "resend" << endl;
-            for (int i = 0; i < (int) waitingNum(nextSeqNum); i++) {
-                memcpy(pkt_buffer, &sendPkt[i], sizeof(Packet));
-                sendto(socket, pkt_buffer, sizeof(Packet), 0, (SOCKADDR *) &addr, addrLen);
-            }
-            start = clock();
-            stopTimer = false;
+            goto GBN;
         }
+        continue;
+
+        GBN:
+        for (int i = 0; i < nextSeqNum - base; i++) {
+            memcpy(pkt_buffer, &sendPkt[i], sizeof(Packet));
+            sendto(socket, pkt_buffer, sizeof(Packet), 0, (SOCKADDR *) &addr, addrLen);
+        }
+        start = clock();
+        stopTimer = false;
     }
 }
 
