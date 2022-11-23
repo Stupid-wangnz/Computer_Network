@@ -16,7 +16,7 @@ using namespace std;
 #define ADDRSRV "127.0.0.1"
 #define MAX_FILE_SIZE 100000000
 char fileBuffer[MAX_FILE_SIZE];
-double MAX_TIME = CLOCKS_PER_SEC;
+double MAX_TIME = CLOCKS_PER_SEC / 2;
 static int base_stage = 0;
 
 bool acceptClient(SOCKET &socket, SOCKADDR_IN &addr) {

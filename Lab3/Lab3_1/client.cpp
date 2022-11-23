@@ -13,7 +13,7 @@
 using namespace std;
 
 #define PORT 7879
-double MAX_TIME = CLOCKS_PER_SEC;
+double MAX_TIME = CLOCKS_PER_SEC / 2;
 string ADDRSRV;
 static int base=0;
 
