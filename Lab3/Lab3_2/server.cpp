@@ -18,6 +18,7 @@ using namespace std;
 #define ADDRSRV "127.0.0.1"
 #define MAX_FILE_SIZE 100000000
 double MAX_TIME = CLOCKS_PER_SEC;
+double MAX_WAIT_TIME = MAX_TIME / 4;
 static u_int base_stage = 0;
 static int windowSize = 16;
 
@@ -40,6 +41,7 @@ bool acceptClient(SOCKET &socket, SOCKADDR_IN &addr) {
     PacketHead head;
     head.flag |= ACK;
     head.flag |= SYN;
+    head.windows=windowSize;
     head.checkSum = CheckPacketSum((u_short *) &head, sizeof(PacketHead));
     memcpy(buffer, &head, sizeof(PacketHead));
     if (sendto(socket, buffer, sizeof(PacketHead), 0, (sockaddr *) &addr, len) == -1) {
@@ -145,7 +147,8 @@ u_long recvFSM(char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
 
     char *pkt_buffer = new char[sizeof(Packet)];
     Packet recvPkt, sendPkt= makePacket(base_stage - 1);
-
+    clock_t start;
+    bool clockStart=false;
     while (true) {
         memset(pkt_buffer, 0, sizeof(Packet));
         recvfrom(socket, pkt_buffer, sizeof(Packet), 0, (SOCKADDR *) &addr, &addrLen);
@@ -169,15 +172,22 @@ u_long recvFSM(char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
 
             //give back ack=seq
             sendPkt = makePacket(expectedSeq);
+            expectedSeq=(expectedSeq+1)%MAX_SEQ;
+            //if this is the first expected seq
+            if(!clockStart){
+                start=clock();
+                clockStart=true;
+                continue;
+            }else if(clock()-start>=MAX_WAIT_TIME){
+                clockStart=false;
+            }else continue;
+
             memcpy(pkt_buffer, &sendPkt, sizeof(Packet));
             sendto(socket, pkt_buffer, sizeof(Packet), 0, (SOCKADDR *) &addr, addrLen);
-            expectedSeq=(expectedSeq+1)%MAX_SEQ;
-            cout<<"recv"<<endl;
-
             continue;
         }
-        cout<<"wait head:"<<expectedSeq<<endl;
-        cout<<"recv head:"<<recvPkt.head.seq<<endl;
+        cout<<"[SYS]wait head:"<<expectedSeq<<endl;
+        cout<<"[SYS]recv head:"<<recvPkt.head.seq<<endl;
         memcpy(pkt_buffer, &sendPkt, sizeof(Packet));
         sendto(socket, pkt_buffer, sizeof(Packet), 0, (SOCKADDR *) &addr, addrLen);
     }

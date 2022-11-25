@@ -11,17 +11,20 @@
 #define MAX_SEQ 0xffff
 using namespace std;
 #define OUTPUT_LOG
+
 struct PacketHead {
     u_int seq;
     u_int ack;
     u_short checkSum;
     u_short bufSize;
     char flag;
+    u_char windows;
 
     PacketHead() {
         seq = ack = 0;
         checkSum = bufSize = 0;
         flag = 0;
+        windows = 0;
     }
 };
 
@@ -34,8 +37,9 @@ u_short CheckPacketSum(u_short *packet, int packetLen) {
 
     u_long sum = 0;
     int count = (packetLen + 1) / 2;
-
-    u_short *temp = new u_short[count];
+    //u_short *temp = new u_short[count];
+    u_short temp1[count];
+    u_short *temp = temp1;
     memset(temp, 0, 2 * count);
     memcpy(temp, packet, packetLen);
 
