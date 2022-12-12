@@ -1,6 +1,6 @@
 #include <iostream>
 #include <WINSOCK2.h>
-#include <time.h>
+#include <ctime>
 #include <fstream>
 #include <cstdio>
 #include <windows.h>
@@ -18,9 +18,9 @@ using namespace std;
 #define ADDRSRV "127.0.0.1"
 #define MAX_FILE_SIZE 100000000
 double MAX_TIME = CLOCKS_PER_SEC;
+double MAX_WAIT_TIME = MAX_TIME / 4;
 static u_int base_stage = 0;
 static int windowSize = 16;
-
 char fileBuffer[MAX_FILE_SIZE];
 
 bool acceptClient(SOCKET &socket, SOCKADDR_IN &addr) {
@@ -29,7 +29,7 @@ bool acceptClient(SOCKET &socket, SOCKADDR_IN &addr) {
     int len = sizeof(addr);
     recvfrom(socket, buffer, sizeof(PacketHead), 0, (SOCKADDR *) &addr, &len);
 
-    ShowPacket((Packet*)buffer);
+    ShowPacket((Packet *) buffer);
 
     if ((((PacketHead *) buffer)->flag & SYN) && (CheckPacketSum((u_short *) buffer, sizeof(PacketHead)) == 0))
         cout << "[SYN_RECV]第一次握手成功" << endl;
@@ -40,13 +40,14 @@ bool acceptClient(SOCKET &socket, SOCKADDR_IN &addr) {
     PacketHead head;
     head.flag |= ACK;
     head.flag |= SYN;
+    head.windows = windowSize;
     head.checkSum = CheckPacketSum((u_short *) &head, sizeof(PacketHead));
     memcpy(buffer, &head, sizeof(PacketHead));
     if (sendto(socket, buffer, sizeof(PacketHead), 0, (sockaddr *) &addr, len) == -1) {
         return false;
     }
 
-    ShowPacket((Packet*)buffer);
+    ShowPacket((Packet *) buffer);
 
     cout << "[SYN_ACK_SEND]第二次握手成功" << endl;
     u_long imode = 1;
@@ -60,7 +61,7 @@ bool acceptClient(SOCKET &socket, SOCKADDR_IN &addr) {
         }
     }
 
-    ShowPacket((Packet*)buffer);
+    ShowPacket((Packet *) buffer);
 
     if ((((PacketHead *) buffer)->flag & ACK) && (CheckPacketSum((u_short *) buffer, sizeof(PacketHead)) == 0)) {
         cout << "[ACK_RECV]第三次握手成功" << endl;
@@ -80,7 +81,7 @@ bool disConnect(SOCKET &socket, SOCKADDR_IN &addr) {
 
     recvfrom(socket, buffer, sizeof(PacketHead), 0, (SOCKADDR *) &addr, &addrLen);
 
-    ShowPacket((Packet*)buffer);
+    ShowPacket((Packet *) buffer);
 
     if ((((PacketHead *) buffer)->flag & FIN) && (CheckPacketSum((u_short *) buffer, sizeof(PacketHead) == 0))) {
         cout << "[SYS]第一次挥手完成，用户端断开" << endl;
@@ -95,8 +96,8 @@ bool disConnect(SOCKET &socket, SOCKADDR_IN &addr) {
     memcpy(buffer, &closeHead, sizeof(PacketHead));
     sendto(socket, buffer, sizeof(PacketHead), 0, (SOCKADDR *) &addr, addrLen);
 
-    ShowPacket((Packet*)buffer);
-    cout<<"[SYS]第二次挥手完成"<<endl;
+    ShowPacket((Packet *) buffer);
+    cout << "[SYS]第二次挥手完成" << endl;
 
     closeHead.flag = 0;
     closeHead.flag |= FIN;
@@ -104,8 +105,8 @@ bool disConnect(SOCKET &socket, SOCKADDR_IN &addr) {
     memcpy(buffer, &closeHead, sizeof(PacketHead));
     sendto(socket, buffer, sizeof(PacketHead), 0, (SOCKADDR *) &addr, addrLen);
 
-    ShowPacket((Packet*)buffer);
-    cout<<"[SYS]第三次挥手完成"<<endl;
+    ShowPacket((Packet *) buffer);
+    cout << "[SYS]第三次挥手完成" << endl;
 
     u_long imode = 1;
     ioctlsocket(socket, FIONBIO, &imode);
@@ -118,7 +119,7 @@ bool disConnect(SOCKET &socket, SOCKADDR_IN &addr) {
         }
     }
 
-    ShowPacket((Packet*)buffer);
+    ShowPacket((Packet *) buffer);
     if ((((PacketHead *) buffer)->flag & ACK) && (CheckPacketSum((u_short *) buffer, sizeof(PacketHead) == 0))) {
         cout << "[SYS]第四次挥手完成，链接关闭" << endl;
     } else {
@@ -144,12 +145,14 @@ u_long recvFSM(char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
     int dataLen;
 
     char *pkt_buffer = new char[sizeof(Packet)];
-    Packet recvPkt, sendPkt= makePacket(base_stage - 1);
+    Packet recvPkt, sendPkt = makePacket(base_stage - 1);
+    clock_t start;
+    bool clockStart = false;
 
     while (true) {
         memset(pkt_buffer, 0, sizeof(Packet));
         recvfrom(socket, pkt_buffer, sizeof(Packet), 0, (SOCKADDR *) &addr, &addrLen);
-        memcpy(&recvPkt,pkt_buffer, sizeof(Packet));
+        memcpy(&recvPkt, pkt_buffer, sizeof(Packet));
 
         if (recvPkt.head.flag & END && CheckPacketSum((u_short *) &recvPkt, sizeof(PacketHead)) == 0) {
             cout << "传输完毕" << endl;
@@ -161,7 +164,7 @@ u_long recvFSM(char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
             return fileLen;
         }
 
-        if(recvPkt.head.seq==expectedSeq && CheckPacketSum((u_short *) &recvPkt, sizeof(Packet)) == 0){
+        if (recvPkt.head.seq == expectedSeq && CheckPacketSum((u_short *) &recvPkt, sizeof(Packet)) == 0) {
             //correctly receive the expected seq
             dataLen = recvPkt.head.bufSize;
             memcpy(fileBuffer + fileLen, recvPkt.data, dataLen);
@@ -169,15 +172,23 @@ u_long recvFSM(char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
 
             //give back ack=seq
             sendPkt = makePacket(expectedSeq);
+            expectedSeq = (expectedSeq + 1) % MAX_SEQ;
+            /*//if this is the first expected seq
+            if (!clockStart) {
+                start = clock();
+                clockStart = true;
+                continue;
+            } else if (clock() - start >= MAX_WAIT_TIME) {
+                clockStart = false;
+            } else continue;*/
+
             memcpy(pkt_buffer, &sendPkt, sizeof(Packet));
             sendto(socket, pkt_buffer, sizeof(Packet), 0, (SOCKADDR *) &addr, addrLen);
-            expectedSeq=(expectedSeq+1)%MAX_SEQ;
-            cout<<"recv"<<endl;
-
             continue;
         }
-        cout<<"wait head:"<<expectedSeq<<endl;
-        cout<<"recv head:"<<recvPkt.head.seq<<endl;
+
+        cout << "[SYS]wait head:" << expectedSeq << endl;
+        cout << "[SYS]recv head:" << recvPkt.head.seq << endl;
         memcpy(pkt_buffer, &sendPkt, sizeof(Packet));
         sendto(socket, pkt_buffer, sizeof(Packet), 0, (SOCKADDR *) &addr, addrLen);
     }

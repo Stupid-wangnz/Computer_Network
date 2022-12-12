@@ -6,6 +6,9 @@
 #include <windows.h>
 #include <iostream>
 #include <thread>
+#include <assert.h>
+#include <chrono>
+#include <mutex>
 #include "rdt3.h"
 
 #pragma comment(lib, "ws2_32.lib")  //加载 ws2_32.dll
@@ -17,23 +20,19 @@ using namespace std;
 static SOCKADDR_IN addrSrv;
 static int addrLen = sizeof(addrSrv);
 #define PORT 7879
-double MAX_TIME = CLOCKS_PER_SEC;
+double MAX_TIME = CLOCKS_PER_SEC / 4;
 
 string ADDRSRV;
-static int windowSize = 16;
+static int windowSize = 8;
 static unsigned int base = 0;//握手阶段确定的初始序列号
 static unsigned int nextSeqNum = 0;
-static Packet *sendPkt;
-static int sendIndex = 0, recvIndex = 0;
+static Packet *sendPkt = nullptr;
+static int sendIndex = 0;
 static bool stopTimer = false;
 static clock_t start;
 static int packetNum;
 
-u_int waitingNum(u_int nextSeq) {
-    if (nextSeq >= base)
-        return nextSeq - base;
-    return nextSeq + MAX_SEQ - base;
-}
+mutex mutexLock;
 
 bool connectToServer(SOCKET &socket, SOCKADDR_IN &addr) {
     int len = sizeof(addr);
@@ -66,7 +65,7 @@ bool connectToServer(SOCKET &socket, SOCKADDR_IN &addr) {
         return false;
     }
 
-    windowSize=head.windows;
+    windowSize = head.windows;
     //服务器建立连接
     head.flag = 0;
     head.flag |= ACK;
@@ -165,6 +164,12 @@ Packet makePacket(u_int seq, char *data, int len) {
     return pkt;
 }
 
+u_int waitingNum(u_int nextSeq) {
+    if (nextSeq >= base)
+        return nextSeq - base;
+    return nextSeq + MAX_SEQ - base;
+}
+
 bool inWindows(u_int seq) {
     if (seq >= base && seq < base + windowSize)
         return true;
@@ -182,24 +187,32 @@ DWORD WINAPI ACKHandler(LPVOID param) {
         if (recvfrom(*clientSock, recvBuffer, sizeof(Packet), 0, (SOCKADDR *) &addrSrv, &addrLen) > 0) {
             memcpy(&recvPacket, recvBuffer, sizeof(Packet));
             if (CheckPacketSum((u_short *) &recvPacket, sizeof(Packet)) == 0 && recvPacket.head.flag & ACK) {
+                mutexLock.lock();
                 if (base < (recvPacket.head.ack + 1)) {
                     int d = recvPacket.head.ack + 1 - base;
+
+                    assert(sendPkt != nullptr);
                     for (int i = 0; i < (int) waitingNum(nextSeqNum) - d; i++) {
                         sendPkt[i] = sendPkt[i + d];
                     }
-                    recvIndex += d;
+                    ShowPacket(&recvPacket);
                     base = (max((recvPacket.head.ack + 1), base)) % MAX_SEQ;
-                    cout << "[window move]base:" << base << " nextSeq:" << nextSeqNum << " endWindow:" << base + windowSize << endl;
-                    if (base == packetNum)
-                        return 0;
+#ifdef OUTPUT_LOG
+                    cout << "[window move]base:" << base << " nextSeq:" << nextSeqNum << " endWindow:"
+                         << base + windowSize << endl;
+#endif
                 }
+                mutexLock.unlock();
                 if (base == nextSeqNum)
                     stopTimer = true;
                 else {
                     start = clock();
                     stopTimer = false;
                 }
+                if (base == packetNum)
+                    return 0;
             }
+
         }
     }
 }
@@ -208,14 +221,25 @@ void sendFSM(u_long len, char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
 
     packetNum = int(len / MAX_DATA_SIZE) + (len % MAX_DATA_SIZE ? 1 : 0);
 
+    auto nBeginTime = chrono::system_clock::now();
+    auto nEndTime = nBeginTime;
+
     int packetDataLen;
     int addrLen = sizeof(addr);
-    char *data_buffer = new char[packetDataLen], *pkt_buffer = new char[sizeof(Packet)];
+    char *data_buffer = new char[sizeof(Packet)], *pkt_buffer = new char[sizeof(Packet)];
     nextSeqNum = base;
     cout << "[SYS]本次文件数据长度为" << len << "Bytes,需要传输" << packetNum << "个数据包" << endl;
     HANDLE ackhandler = CreateThread(nullptr, 0, ACKHandler, LPVOID(&socket), 0, nullptr);
     while (true) {
-        if (recvIndex == packetNum) {
+        if (base == packetNum) {
+
+            nEndTime = chrono::system_clock::now();
+            auto duration = chrono::duration_cast<chrono::microseconds>(nEndTime - nBeginTime);
+            double lossRate = 0;
+            printf("System use %lf s, and the rate of loss packet is %lf\n",
+                   double(duration.count()) * chrono::microseconds::period::num /
+                   chrono::microseconds::period::den, lossRate);
+
             CloseHandle(ackhandler);
             PacketHead endPacket;
             endPacket.flag |= END;
@@ -241,21 +265,26 @@ void sendFSM(u_long len, char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
         }
 
         packetDataLen = min(MAX_DATA_SIZE, len - sendIndex * MAX_DATA_SIZE);
-
+        mutexLock.lock();
         if (inWindows(nextSeqNum) && sendIndex < packetNum) {
             memcpy(data_buffer, fileBuffer + sendIndex * MAX_DATA_SIZE, packetDataLen);
+
+            assert (sendPkt != nullptr);
             sendPkt[(int) waitingNum(nextSeqNum)] = makePacket(nextSeqNum, data_buffer, packetDataLen);
             memcpy(pkt_buffer, &sendPkt[(int) waitingNum(nextSeqNum)], sizeof(Packet));
-            sendto(socket, pkt_buffer, sizeof(Packet), 0, (SOCKADDR *) &addr, addrLen);
+            nextSeqNum = (nextSeqNum + 1) % MAX_SEQ;
             ShowPacket(&sendPkt[(int) waitingNum(nextSeqNum)]);
+            sendto(socket, pkt_buffer, sizeof(Packet), 0, (SOCKADDR *) &addr, addrLen);
+
+
             if (base == nextSeqNum) {
                 start = clock();
                 stopTimer = false;
             }
-            nextSeqNum = (nextSeqNum + 1) % MAX_SEQ;
+
             sendIndex++;
         }
-
+        mutexLock.unlock();
         /*while (recvfrom(socket, pkt_buffer, sizeof(Packet), 0, (SOCKADDR *) &addr, &addrLen) > 0) {
             memcpy(&recvPkt, pkt_buffer, sizeof(Packet));
             //corrupt
@@ -283,11 +312,13 @@ void sendFSM(u_long len, char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
         time_out:
         if (!stopTimer && clock() - start >= MAX_TIME) {
             cout << "[time out!]resend begin" << endl;
+            mutexLock.lock();
             for (int i = 0; i < (int) waitingNum(nextSeqNum); i++) {
                 memcpy(pkt_buffer, &sendPkt[i], sizeof(Packet));
                 sendto(socket, pkt_buffer, sizeof(Packet), 0, (SOCKADDR *) &addr, addrLen);
                 ShowPacket(&sendPkt[i]);
             }
+            mutexLock.unlock();
             start = clock();
             stopTimer = false;
         }
@@ -317,7 +348,7 @@ int main() {
         cout << "[ERROR]连接失败" << endl;
         return 0;
     }
-    sendPkt=new Packet[windowSize];
+    sendPkt = new Packet[windowSize];
     string filename;
     cout << "[SYSTEM]请输入需要传输的文件名" << endl;
     cin >> filename;

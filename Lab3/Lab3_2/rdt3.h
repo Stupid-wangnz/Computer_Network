@@ -1,5 +1,5 @@
 //
-// Created by LEGION on 2022-11-09.
+// Created by WNZZ on 2022-11-09.
 //
 
 #define SYN 0x1
@@ -11,7 +11,7 @@
 #define MAX_SEQ 0xffff
 using namespace std;
 #define OUTPUT_LOG
-
+#undef OUTPUT_LOG
 struct PacketHead {
     u_int seq;
     u_int ack;

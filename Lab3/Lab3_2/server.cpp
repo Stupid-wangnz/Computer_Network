@@ -1,6 +1,6 @@
 #include <iostream>
 #include <WINSOCK2.h>
-#include <time.h>
+#include <ctime>
 #include <fstream>
 #include <cstdio>
 #include <windows.h>
@@ -17,10 +17,10 @@ using namespace std;
 #define PORT 7878
 #define ADDRSRV "127.0.0.1"
 #define MAX_FILE_SIZE 100000000
-double MAX_TIME = CLOCKS_PER_SEC;
+double MAX_TIME = CLOCKS_PER_SEC / 4;
 double MAX_WAIT_TIME = MAX_TIME / 4;
 static u_int base_stage = 0;
-static int windowSize = 16;
+static int windowSize = 8;
 
 char fileBuffer[MAX_FILE_SIZE];
 

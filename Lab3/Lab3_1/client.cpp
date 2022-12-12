@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <iostream>
 #include <thread>
+#include <chrono>
 #include "rdt3.h"
 
 #pragma comment(lib, "ws2_32.lib")  //加载 ws2_32.dll
@@ -13,7 +14,7 @@
 using namespace std;
 
 #define PORT 7879
-double MAX_TIME = CLOCKS_PER_SEC / 2;
+double MAX_TIME = CLOCKS_PER_SEC / 4;
 string ADDRSRV;
 static int base=0;
 
@@ -163,9 +164,18 @@ void sendFSM(u_long len, char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
     Packet sendPkt, pkt;
 
     cout << "[SYSTEM]本次文件数据长度为" << len << "Bytes,需要传输" << packetNum << "个数据包" << endl;
+    auto nBeginTime = chrono::system_clock::now();
+    auto nEndTime = nBeginTime;
 
     while (true) {
         if (index == packetNum) {
+            nEndTime = chrono::system_clock::now();
+            auto duration = chrono::duration_cast<chrono::microseconds>(nEndTime - nBeginTime);
+            double lossRate = 0;
+            printf("System use %lf s, and the rate of loss packet is %lf\n",
+                   double(duration.count()) * chrono::microseconds::period::num /
+                   chrono::microseconds::period::den, lossRate);
+
             PacketHead endPacket;
             endPacket.flag |= END;
             endPacket.checkSum = CheckPacketSum((u_short *) &endPacket, sizeof(PacketHead));

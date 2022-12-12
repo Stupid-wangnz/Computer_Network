@@ -6,6 +6,8 @@
 #include <windows.h>
 #include <iostream>
 #include <thread>
+#include <mutex>
+#include <chrono>
 #include "rdt3.h"
 
 #pragma comment(lib, "ws2_32.lib")  //加载 ws2_32.dll
@@ -15,23 +17,34 @@ using namespace std;
 #define min(a, b) a>b?b:a
 #define max(a, b) a>b?a:b
 #define PORT 7879
-#define MSS MAX_DATA_SIZE
-double MAX_TIME = CLOCKS_PER_SEC;
-
+static int addrLen;
+double MAX_TIME = CLOCKS_PER_SEC / 4;
+static u_long fileLen;
 string ADDRSRV;
+SOCKADDR_IN addrSrv;
+static const u_long windowSize = 8 * MSS;
+static u_int base = 0;//握手阶段确定的初始序列号
+static u_int nextSeqNum = base;
+static mutex mutexLock;
 
-static const u_long windowSize = 16 * MSS;
-static unsigned int base = 0;//握手阶段确定的初始序列号
+static clock_t start;
+static bool stopTimer = true;
 
 static u_long cwnd = MSS;
-static int ssthresh = 20 * MSS;
+static u_long ssthresh = 6 * MSS;
 static int dupACKCount = 0;
+static u_long window;
 //sender缓冲区
+static u_long lastSendByte = 0, lastAckByte = 0;
+static Packet sendPkts[50]{};
 
-enum {
-    START_UP, AVOID, RECOVERY
-};
+//RENO
+
 static int RENO_STAGE = START_UP;
+
+// new RENO
+static bool fastResend = false;
+static bool timeOutResend = false;
 
 bool connectToServer(SOCKET &socket, SOCKADDR_IN &addr) {
     int len = sizeof(addr);
@@ -163,24 +176,146 @@ Packet makePacket(u_int seq, char *data, int len) {
     return pkt;
 }
 
-void sendFSM(u_long len, char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
+u_int waitingNum(u_int nextSeq) {
+    if (nextSeq >= base)
+        return nextSeq - base;
+    return nextSeq + MAX_SEQ - base;
+}
 
-    int packetNum = int(len / MAX_DATA_SIZE) + (len % MAX_DATA_SIZE ? 1 : 0);
-    int packetDataLen;
-    int addrLen = sizeof(addr);
-    clock_t start;
-    bool stopTimer = false;
-    char *data_buffer = new char[sizeof(Packet)], *pkt_buffer = new char[sizeof(Packet)];
-    Packet recvPkt;
-    u_int nextSeqNum = base;
-    Packet sendPkt[100]{};
-    cout << "本次文件数据长度为" << len << "Bytes,需要传输" << packetNum << "个数据包" << endl;
-
-    u_long lastSendByte = 0, lastAckByte = 0;
+DWORD WINAPI ACKHandler(LPVOID param) {
+    SOCKET *clientSock = (SOCKET *) param;
+    char recvBuffer[sizeof(Packet)];
+    Packet recvPacket;
 
     while (true) {
+        if (recvfrom(*clientSock, recvBuffer, sizeof(Packet), 0, (SOCKADDR *) &addrSrv, &addrLen) > 0) {
+            memcpy(&recvPacket, recvBuffer, sizeof(Packet));
+            mutexLock.lock();
+            if (CheckPacketSum((u_short *) &recvPacket, sizeof(Packet)) == 0 && recvPacket.head.flag & ACK) {
+                if (base < (recvPacket.head.ack + 1)) {
 
-        if (lastAckByte >= len) {
+                    int d = recvPacket.head.ack + 1 - base;
+                    for (int i = 0; i < d; i++) {
+                        lastAckByte += sendPkts[i].head.bufSize;
+                    }
+                    for (int i = 0; i < (int) waitingNum(nextSeqNum) - d; i++) {
+                        sendPkts[i] = sendPkts[i + d];
+                    }
+                    string stageName;
+                    switch (RENO_STAGE) {
+                        case START_UP:
+                            cwnd += d * MSS;
+                            dupACKCount = 0;
+                            if (cwnd >= ssthresh)
+                                RENO_STAGE = AVOID;
+                            break;
+                        case AVOID:
+                            cwnd += d * MSS * MSS / cwnd;
+                            dupACKCount = 0;
+                            break;
+                        case RECOVERY:
+                            cwnd = ssthresh;
+                            dupACKCount = 0;
+                            RENO_STAGE = AVOID;
+                            break;
+                    }
+                    window = min(cwnd, windowSize);
+                    base = (recvPacket.head.ack + 1) % MAX_SEQ;
+                    stageName = getRENOStageName(RENO_STAGE);
+#ifdef OUTPUT_LOG
+                    cout << "[" << stageName << "]cwnd:" << cwnd << "\twindow:" << window << "\tssthresh:" << ssthresh
+                         << endl;
+                    cout << "[lastACKByte:" << lastAckByte << "\tlastSendByte:" << lastSendByte
+                         << "\tlastWritenByte:"
+                         << lastAckByte + window << "]" << endl;
+#endif
+                } else {
+                    //duplicate ACK
+                    dupACKCount++;
+                    if (RENO_STAGE == START_UP || RENO_STAGE == AVOID) {
+                        if (dupACKCount == 3) {
+                            ssthresh = cwnd / 2;
+                            cwnd = ssthresh + 3 * MSS;
+                            RENO_STAGE = RECOVERY;
+                            //retransmit missing segment
+                            fastResend = true;
+#ifdef OUTPUT_LOG
+                            cout << "ACK DUP 3 times!Retransmit the missing packet" << endl;
+#endif
+                            /* int reSendSeq = recvPacket.head.ack + 1;
+                             memcpy(recvBuffer, &sendPkts[waitingNum(reSendSeq)], sizeof(Packet));
+                             sendto(*clientSock, recvBuffer, sizeof(Packet), 0, (SOCKADDR *) &addrSrv, addrLen);*/
+                        }
+                    } else {
+                        cwnd += MSS;
+                    }
+
+                    string stageName = getRENOStageName(RENO_STAGE);
+#ifdef OUTPUT_LOG
+                    cout << "[" << stageName << "]cwnd:" << cwnd << "\twindow:" << window << "\tssthresh:" << ssthresh
+                         << endl;
+                    cout << "[lastACKByte:" << lastAckByte << "\tlastSendByte:" << lastSendByte
+                         << "\tlastWritenByte:"
+                         << lastAckByte + window << "]" << endl;
+#endif
+                }
+
+                if (base == nextSeqNum)
+                    stopTimer = true;
+                else {
+                    start = clock();
+                    stopTimer = false;
+                }
+            }
+            mutexLock.unlock();
+            if (lastAckByte == fileLen)
+                return 0;
+        }
+    }
+}
+
+DWORD WINAPI TIMEOUTHandler(LPVOID param) {
+    while (true) {
+
+        if (lastAckByte == fileLen)
+            return 0;
+        if (!stopTimer) {
+            if (clock() - start > MAX_TIME) {
+                timeOutResend = true;
+#ifdef OUTPUT_LOG
+                cout << "[time out!]Begin Resend" << endl;
+#endif
+            }
+        }
+    }
+}
+
+void sendFSM(u_long len, char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
+
+    int packetDataLen;
+
+    char *data_buffer = new char[sizeof(Packet)], *pkt_buffer = new char[sizeof(Packet)];
+    nextSeqNum = base;
+    cout << "本次文件数据长度为" << len << "Bytes" << endl;
+
+    int sumPackets = 0, lossPackets = 0;
+    auto nBeginTime = chrono::system_clock::now();
+    auto nEndTime = nBeginTime;
+    HANDLE ackhandler = CreateThread(nullptr, 0, ACKHandler, LPVOID(&socket), 0, nullptr);
+    HANDLE timeouthandler = CreateThread(nullptr, 0, TIMEOUTHandler, nullptr, 0, nullptr);
+    string stageName;
+    while (true) {
+
+        if (lastAckByte == len) {
+            nEndTime = chrono::system_clock::now();
+            auto duration = chrono::duration_cast<chrono::microseconds>(nEndTime - nBeginTime);
+            double lossRate = double(lossPackets) / sumPackets;
+            printf("System use %lf s, and the rate of loss packet is %lf\n",
+                   double(duration.count()) * chrono::microseconds::period::num /
+                   chrono::microseconds::period::den, lossRate);
+
+            CloseHandle(ackhandler);
+            CloseHandle(timeouthandler);
             PacketHead endPacket;
             endPacket.flag |= END;
             endPacket.checkSum = CheckPacketSum((u_short *) &endPacket, sizeof(PacketHead));
@@ -204,15 +339,21 @@ void sendFSM(u_long len, char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
             continue;
         }
 
-        u_long window = min(cwnd, windowSize);
+        if (fastResend || timeOutResend)
+            goto GBN;
 
+        mutexLock.lock();
+        window = min(cwnd, windowSize);
         if ((lastSendByte < lastAckByte + window) && (lastSendByte < len)) {
-            cout << "remain len:" << len - lastSendByte << endl;
+            sumPackets++;
+
             packetDataLen = min(lastAckByte + window - lastSendByte, MSS);
             packetDataLen = min(packetDataLen, len - lastSendByte);
             memcpy(data_buffer, fileBuffer + lastSendByte, packetDataLen);
-            sendPkt[nextSeqNum - base] = makePacket(nextSeqNum, data_buffer, packetDataLen);
-            memcpy(pkt_buffer, &sendPkt[nextSeqNum - base], sizeof(Packet));
+
+            sendPkts[nextSeqNum - base] = makePacket(nextSeqNum, data_buffer, packetDataLen);
+            memcpy(pkt_buffer, &sendPkts[nextSeqNum - base], sizeof(Packet));
+
             sendto(socket, pkt_buffer, sizeof(Packet), 0, (SOCKADDR *) &addr, addrLen);
 
             if (base == nextSeqNum) {
@@ -221,93 +362,24 @@ void sendFSM(u_long len, char *fileBuffer, SOCKET &socket, SOCKADDR_IN &addr) {
             }
             nextSeqNum = (nextSeqNum + 1) % MAX_SEQ;
             lastSendByte += packetDataLen;
-            cout << "base:" << base << " nextSeq:" << nextSeqNum << endl;
-            cout << "cwnd:" << cwnd << "\tpacket len:" << packetDataLen << endl;
-            cout << "Send:[lastACKByte:" << lastAckByte << "\tlastSendByte:" << lastSendByte << "\tlastWritenByte:"
-                 << lastAckByte + window << "]" << endl;
-            continue;
         }
+        mutexLock.unlock();
+        continue;
 
-        while (recvfrom(socket, pkt_buffer, sizeof(Packet), 0, (SOCKADDR *) &addr, &addrLen) > 0) {
-            memcpy(&recvPkt, pkt_buffer, sizeof(Packet));
-            //corrupt
-            if (CheckPacketSum((u_short *) &recvPkt, sizeof(Packet)) != 0 || !(recvPkt.head.flag & ACK))
-                goto time_out;
-            //not corrupt
-            if (base < (recvPkt.head.ack + 1)) {
-                int d = recvPkt.head.ack + 1 - base;
-                cout << "confirm:" << d << endl;
-                for (int i = 0; i < d; i++) {
-                    lastAckByte += sendPkt[i].head.bufSize;
-                }
-                for (int i = 0; i < nextSeqNum - base - d; i++) {
-                    sendPkt[i] = sendPkt[i + d];
-                }
-
-
-                switch (RENO_STAGE) {
-                    case START_UP:
-                        cwnd += MSS;
-                        dupACKCount = 0;
-                        if (cwnd >= ssthresh)
-                            RENO_STAGE = AVOID;
-                        break;
-                    case AVOID:
-                        cwnd += MSS * MSS / cwnd;
-                        dupACKCount = 0;
-                        break;
-                    case RECOVERY:
-                        cwnd = ssthresh;
-                        dupACKCount = 0;
-                        RENO_STAGE = AVOID;
-                        break;
-                }
-                window = min(cwnd, windowSize);
-                base += d;
-                cout << "base:" << base << " nextSeq:" << nextSeqNum << endl;
-                cout << "cwnd:" << cwnd << endl;
-                cout << "ACK:[lastACKByte:" << lastAckByte << "\tlastSendByte:" << lastSendByte << "\tlastWritenByte:"
-                     << lastAckByte + window << "]" << endl;
-            } else {
-                //duplicate ACK
-                dupACKCount++;
-                if (RENO_STAGE == START_UP || RENO_STAGE == AVOID) {
-                    if (dupACKCount == 3) {
-                        ssthresh = cwnd / 2;
-                        cwnd = ssthresh + 3 * MSS;
-                        RENO_STAGE = RECOVERY;
-                    }
-                } else {
-                    cwnd += MSS;
-                }
-            }
-
-            if (base == nextSeqNum)
-                stopTimer = true;
-            else {
-                start = clock();
-                stopTimer = false;
-            }
-
+        GBN:
+        mutexLock.lock();
+        for (int i = 0; i < nextSeqNum - base; i++) {
+            memcpy(pkt_buffer, &sendPkts[i], sizeof(Packet));
+            sendto(socket, pkt_buffer, sizeof(Packet), 0, (SOCKADDR *) &addr, addrLen);
         }
-
-        time_out:
-        if (!stopTimer && clock() - start >= MAX_TIME) {
-            cout << "time out!" << endl;
+        if (timeOutResend) {
             ssthresh = cwnd / 2;
             cwnd = MSS;
             dupACKCount = 0;
             RENO_STAGE = START_UP;
-            cout << "resend" << endl;
-            goto GBN;
         }
-        continue;
-
-        GBN:
-        for (int i = 0; i < nextSeqNum - base; i++) {
-            memcpy(pkt_buffer, &sendPkt[i], sizeof(Packet));
-            sendto(socket, pkt_buffer, sizeof(Packet), 0, (SOCKADDR *) &addr, addrLen);
-        }
+        timeOutResend = fastResend = false;
+        mutexLock.unlock();
         start = clock();
         stopTimer = false;
     }
@@ -328,11 +400,10 @@ int main() {
     cout << "[NOT CONNECTED]请输入聊天服务器的地址" << endl;
     cin >> ADDRSRV;
 
-    SOCKADDR_IN addrSrv;
     addrSrv.sin_family = AF_INET;
     addrSrv.sin_port = htons(PORT);
     addrSrv.sin_addr.S_un.S_addr = inet_addr(ADDRSRV.c_str());
-
+    addrLen = sizeof(addrSrv);
     if (!connectToServer(sockClient, addrSrv)) {
         cout << "[ERROR]连接失败" << endl;
         return 0;
@@ -350,7 +421,7 @@ int main() {
     }
 
     infile.seekg(0, infile.end);
-    u_long fileLen = infile.tellg();
+    fileLen = infile.tellg();
     infile.seekg(0, infile.beg);
     cout << fileLen << endl;
 

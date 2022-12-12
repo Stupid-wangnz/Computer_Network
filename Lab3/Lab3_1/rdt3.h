@@ -12,7 +12,7 @@
 using namespace std;
 
 #define OUTPUT_LOG
-
+#undef OUTPUT_LOG
 struct PacketHead {
     u_int seq;
     u_int ack;
