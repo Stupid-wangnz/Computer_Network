@@ -11,6 +11,7 @@
 #define MAX_SEQ 0xffff
 using namespace std;
 #define OUTPUT_LOG
+#undef OUTPUT_LOG
 #define MSS MAX_DATA_SIZE
 struct PacketHead {
     u_int seq;

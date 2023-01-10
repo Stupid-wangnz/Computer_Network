@@ -22,7 +22,7 @@ double MAX_TIME = CLOCKS_PER_SEC / 4;
 static u_long fileLen;
 string ADDRSRV;
 SOCKADDR_IN addrSrv;
-static const u_long windowSize = 8 * MSS;
+static const u_long windowSize = 12 * MSS;
 static u_int base = 0;//握手阶段确定的初始序列号
 static u_int nextSeqNum = base;
 static mutex mutexLock;
@@ -31,7 +31,7 @@ static clock_t start;
 static bool stopTimer = true;
 
 static u_long cwnd = MSS;
-static u_long ssthresh = 6 * MSS;
+static u_long ssthresh = 8 * MSS;
 static int dupACKCount = 0;
 static u_long window;
 //sender缓冲区
